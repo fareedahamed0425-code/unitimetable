@@ -48,6 +48,20 @@ interface SidebarProps {
   currentUser: User | null;
 }
 
+interface NavItem {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  badge?: string;
+  count?: number;
+}
+
+interface NavGroup {
+  title: string;
+  restricted?: boolean;
+  items: NavItem[];
+}
+
 export const Sidebar: React.FC<SidebarProps> = ({
   currentSection,
   onSelectSection,
@@ -58,7 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const isRestricted = currentUser?.role === 'STUDENT' || currentUser?.role === 'FACULTY';
 
-  const allNavGroups = [
+  const allNavGroups: NavGroup[] = [
     {
       title: 'SCHEDULE',
       items: [
