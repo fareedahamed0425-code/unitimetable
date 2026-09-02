@@ -21,6 +21,8 @@ import {
   PanelLeftOpen
 } from 'lucide-react';
 
+import { User } from '../../shared/types';
+
 export type NavSection =
   | 'dashboard'
   | 'wizard'
@@ -43,27 +45,32 @@ interface SidebarProps {
   currentSection: NavSection;
   onSelectSection: (section: NavSection) => void;
   conflictsCount: number;
+  currentUser: User | null;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   currentSection,
   onSelectSection,
-  conflictsCount
+  conflictsCount,
+  currentUser
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  const navGroups = [
+  const isRestricted = currentUser?.role === 'STUDENT' || currentUser?.role === 'FACULTY';
+
+  const allNavGroups = [
     {
       title: 'SCHEDULE',
       items: [
         { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
-        { id: 'wizard', label: 'Smart Wizard', icon: Sparkles, badge: 'AI' },
+        ...(isRestricted ? [] : [{ id: 'wizard', label: 'Smart Wizard', icon: Sparkles, badge: 'AI' }]),
         { id: 'timetable', label: 'Timetable Grid', icon: CalendarDays },
-        { id: 'conflicts', label: 'Conflict Center', icon: AlertTriangle, count: conflictsCount }
+        ...(isRestricted ? [] : [{ id: 'conflicts', label: 'Conflict Center', icon: AlertTriangle, count: conflictsCount }])
       ]
     },
     {
       title: 'OPTIMIZATION',
+      restricted: true,
       items: [
         { id: 'preferences', label: 'Smart Preferences', icon: Sliders },
         { id: 'availability', label: 'Availability Matrix', icon: CheckSquare }
@@ -71,6 +78,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       title: 'ACADEMIC STRUCTURE',
+      restricted: true,
       items: [
         { id: 'hierarchy', label: 'University Hierarchy', icon: Network },
         { id: 'faculty', label: 'Faculty & Teachers', icon: Users },
@@ -83,6 +91,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       title: 'INTEROPERABILITY',
+      restricted: true,
       items: [
         { id: 'fet', label: 'FET XML Hub', icon: FileCode },
         { id: 'publishing', label: 'Publishing & Versions', icon: ShieldCheck },
@@ -90,6 +99,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ]
     }
   ];
+
+  // Filter out restricted groups for students and faculty
+  const navGroups = allNavGroups.filter(group => !(isRestricted && group.restricted));
 
   return (
     <aside

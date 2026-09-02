@@ -86,7 +86,15 @@ export const App: React.FC = () => {
       <Navbar
         currentUser={currentUser}
         allUsers={users}
-        onSelectUser={setCurrentUser}
+        onSelectUser={(u) => {
+          setCurrentUser(u);
+          if (u && (u.role === 'STUDENT' || u.role === 'FACULTY')) {
+            if (!['dashboard', 'timetable'].includes(currentSection)) {
+              setCurrentSection('dashboard');
+              setIsWizardOpen(false);
+            }
+          }
+        }}
         activeTimetable={activeTimetable}
         onOpenWizard={() => {
           setIsWizardOpen(true);
@@ -107,6 +115,7 @@ export const App: React.FC = () => {
             else setIsWizardOpen(false);
           }}
           conflictsCount={conflictsCount}
+          currentUser={currentUser}
         />
 
         {/* Center Content Workspace */}

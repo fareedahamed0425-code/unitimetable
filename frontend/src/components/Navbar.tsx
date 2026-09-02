@@ -131,13 +131,16 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Smart Wizard CTA (Solid Obsidian Button) */}
-          <button
-            onClick={onOpenWizard}
-            className="lux-btn lux-btn-primary text-xs h-9 px-3.5 flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-white" />
-            <span>Smart Wizard</span>
-          </button>
+          {currentUser?.role !== 'STUDENT' && currentUser?.role !== 'FACULTY' && (
+            <button
+              onClick={onOpenWizard}
+              className="lux-btn lux-btn-primary text-xs h-9 px-3.5 flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-white" />
+              <span>Smart Wizard</span>
+            </button>
+          )}
+
 
           {/* User Role Switcher with Clean Formatting */}
           <div className="flex items-center pl-2 border-l border-[#E8E7E3] flex-shrink-0">
