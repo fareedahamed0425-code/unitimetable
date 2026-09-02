@@ -13,6 +13,15 @@ import { PublishingAndAuditView } from './components/governance/PublishingAndAud
 import { api } from './api';
 import { Room, Teacher, TimeSlot, Timetable, User } from '../../shared/types';
 
+const TEST_USERS: User[] = [
+  { id: 'user-super', name: 'Super Admin', email: 'admin@mist.edu', role: 'SUPER_ADMIN', createdAt: new Date().toISOString() },
+  { id: 'user-univ-admin', name: 'Dean Academic Affairs', email: 'dean@mist.edu', role: 'UNIVERSITY_ADMIN', createdAt: new Date().toISOString() },
+  { id: 'user-dept-admin', name: 'Dr. Alan Turing (HOD CSE)', email: 'hod.cse@mist.edu', role: 'DEPARTMENT_ADMIN', createdAt: new Date().toISOString() },
+  { id: 'user-coordinator', name: 'Prof. Ada Lovelace (Timetable Coordinator)', email: 'coordinator@mist.edu', role: 'TIMETABLE_COORDINATOR', createdAt: new Date().toISOString() },
+  { id: 'user-faculty', name: 'Dr. Grace Hopper', email: 'grace@mist.edu', role: 'FACULTY', createdAt: new Date().toISOString() },
+  { id: 'user-student', name: 'Alex Johnson (Student CSE 3-A)', email: 'alex.j@student.mist.edu', role: 'STUDENT', createdAt: new Date().toISOString() }
+];
+
 export const App: React.FC = () => {
   const [currentSection, setCurrentSection] = useState<NavSection>('dashboard');
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -34,27 +43,29 @@ export const App: React.FC = () => {
   const loadInitialData = async () => {
     try {
       const [uList, tt, stats, tList, infra, cal] = await Promise.all([
-        api.getUsers(),
-        api.getActiveTimetable(),
-        api.getAnalytics(),
-        api.getTeachers(),
-        api.getInfrastructure(),
-        api.getCalendar()
+        api.getUsers().catch(() => TEST_USERS),
+        api.getActiveTimetable().catch(() => null),
+        api.getAnalytics().catch(() => null),
+        api.getTeachers().catch(() => []),
+        api.getInfrastructure().catch(() => ({ buildings: [], rooms: [] })),
+        api.getCalendar().catch(() => [])
       ]);
 
-      setUsers(uList);
-      if (uList.length > 0) {
-        // Default to Timetable Coordinator role
-        const coordinator = uList.find(u => u.role === 'TIMETABLE_COORDINATOR') || uList[0];
-        setCurrentUser(coordinator);
-      }
+      const activeUsers = uList && uList.length > 0 ? uList : TEST_USERS;
+      setUsers(activeUsers);
+      
+      const coordinator = activeUsers.find(u => u.role === 'TIMETABLE_COORDINATOR') || activeUsers[0];
+      setCurrentUser(coordinator);
+      
       setActiveTimetable(tt);
       setAnalytics(stats);
-      setTeachers(tList);
-      setRooms(infra.rooms);
-      setCalendar(cal);
+      setTeachers(tList || []);
+      setRooms(infra?.rooms || []);
+      setCalendar(cal || []);
     } catch (err) {
       console.error('Failed to load initial data:', err);
+      setUsers(TEST_USERS);
+      setCurrentUser(TEST_USERS[3]);
     }
   };
 
