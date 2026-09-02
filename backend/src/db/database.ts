@@ -2,12 +2,18 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 
-let DB_PATH = path.resolve(__dirname, '../../timetable.db');
-const SCHEMA_PATH = path.resolve(__dirname, 'schema.sql');
+// Robust path resolution regardless of whether running from src/ or dist/backend/src/
+const isCompiled = __dirname.includes(path.sep + 'dist' + path.sep) || __dirname.includes('/dist/');
+const backendRoot = isCompiled 
+  ? path.resolve(__dirname, '../../../../') 
+  : path.resolve(__dirname, '../../');
+
+let DB_PATH = path.resolve(backendRoot, 'timetable.db');
+const SCHEMA_PATH = path.resolve(backendRoot, 'src/db/schema.sql');
 
 if (process.env.VERCEL) {
   DB_PATH = '/tmp/timetable.db';
-  const repoDbPath = path.resolve(__dirname, '../../timetable.db');
+  const repoDbPath = path.resolve(backendRoot, 'timetable.db');
   // Copy the seeded DB to /tmp if it's the first time the function runs
   if (!fs.existsSync(DB_PATH) && fs.existsSync(repoDbPath)) {
     fs.copyFileSync(repoDbPath, DB_PATH);
