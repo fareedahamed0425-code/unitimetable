@@ -7,9 +7,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "moduleResolution": "node",
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": "..",
     "resolveJsonModule": true
   },
   "include": ["src/**/*", "../shared/**/*"]

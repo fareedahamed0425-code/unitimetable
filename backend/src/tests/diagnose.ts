@@ -41,7 +41,8 @@ function buildProblemContext(): TimetableProblemContext {
       isLocked: Boolean(a.is_locked),
       lockedDay: a.locked_day !== null ? a.locked_day : undefined,
       lockedPeriod: a.locked_period !== null ? a.locked_period : undefined,
-      lockedRoomId: a.locked_room_id || undefined
+      lockedRoomId: a.locked_room_id || undefined,
+      requiredEquipment: JSON.parse(a.required_equipment || '[]')
     };
   });
 

@@ -81,7 +81,8 @@ function buildProblemContext(profileId?: string): TimetableProblemContext {
       isLocked: Boolean(a.is_locked),
       lockedDay: a.locked_day !== null ? a.locked_day : undefined,
       lockedPeriod: a.locked_period !== null ? a.locked_period : undefined,
-      lockedRoomId: a.locked_room_id || undefined
+      lockedRoomId: a.locked_room_id || undefined,
+      requiredEquipment: JSON.parse(a.required_equipment || '[]')
     };
   });
 
@@ -609,7 +610,7 @@ apiRouter.post('/generator/generate', async (req: Request, res: Response) => {
 });
 
 apiRouter.get('/generator/jobs/:jobId', (req: Request, res: Response) => {
-  const job = activeJobs.get(req.params.jobId);
+  const job = activeJobs.get(req.params.jobId as string);
   if (!job) {
     return res.status(404).json({ success: false, error: 'Job not found' });
   }

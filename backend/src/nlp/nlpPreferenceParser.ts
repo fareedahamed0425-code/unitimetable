@@ -70,7 +70,7 @@ Respond ONLY with valid JSON in this exact structure, with no markdown formattin
         throw new Error(`NVIDIA API Error: ${response.status} - ${errText}`);
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as any;
       const content = data.choices?.[0]?.message?.content || "";
       
       // Parse JSON from content (it might be wrapped in ```json)

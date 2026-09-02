@@ -21,7 +21,7 @@ import {
   PanelLeftOpen
 } from 'lucide-react';
 
-import { User } from '../../shared/types';
+import { User } from '../../../shared/types';
 
 export type NavSection =
   | 'dashboard'

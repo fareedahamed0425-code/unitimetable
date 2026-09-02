@@ -115,7 +115,8 @@ async function runTests() {
     durationPeriods: a.duration_periods || 1,
     occurrencesPerWeek: 1,
     activityType: a.activity_type || 'LECTURE',
-    requiredRoomType: a.required_room_type || 'CLASSROOM'
+    requiredRoomType: a.required_room_type || 'CLASSROOM',
+    requiredEquipment: []
   }));
 
   const testContext: TimetableProblemContext = {
