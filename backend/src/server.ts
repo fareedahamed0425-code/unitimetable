@@ -26,13 +26,15 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.listen(PORT, () => {
-  console.log(`====================================================`);
-  console.log(`University Timetabling System Backend API`);
-  console.log(`Server listening on http://localhost:${PORT}`);
-  console.log(`FET Interoperability Layer: READY`);
-  console.log(`CSP Constraint Solver & Optimizer: READY`);
-  console.log(`====================================================`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`====================================================`);
+    console.log(`University Timetabling System Backend API`);
+    console.log(`Server listening on http://localhost:${PORT}`);
+    console.log(`FET Interoperability Layer: READY`);
+    console.log(`CSP Constraint Solver & Optimizer: READY`);
+    console.log(`====================================================`);
+  });
+}
 
 export default app;
