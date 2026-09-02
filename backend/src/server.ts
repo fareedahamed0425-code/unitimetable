@@ -26,6 +26,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`====================================================`);
