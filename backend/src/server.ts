@@ -21,6 +21,11 @@ seedDatabase(false);
 // Register API Router
 app.use('/api', apiRouter);
 
+// Root route for sanity check
+app.get('/', (req, res) => {
+  res.send('University Timetable Backend is running. API is at /api');
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
