@@ -1,4 +1,6 @@
 import assert from 'assert';
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env' });
 import { initializeDatabase } from '../db/database';
 import { seedDatabase } from '../db/seed';
 import { CSPSolver } from '../engine/cspSolver';
@@ -21,7 +23,7 @@ async function runTests() {
   // Test 1: NLP Preference Parser
   console.log('1. Testing Natural Language Preference Parser...');
   const prompt1 = 'I want a student-friendly timetable. Keep classes between 9 AM and 4 PM, minimize gaps, avoid Saturday classes, and make sure teachers don\'t have more than three consecutive periods.';
-  const nlpRes1 = NLPPreferenceParser.parse(prompt1);
+  const nlpRes1 = await NLPPreferenceParser.parse(prompt1);
 
   assert.ok(nlpRes1.interpretedRules.length >= 4, 'NLP should extract at least 4 rules');
   const gapRule = nlpRes1.interpretedRules.find(r => r.ruleCode === 'MINIMIZE_GAPS');

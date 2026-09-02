@@ -391,14 +391,19 @@ apiRouter.get('/preferences/profiles', (req: Request, res: Response) => {
   res.json({ success: true, data: fullProfiles });
 });
 
-apiRouter.post('/preferences/nlp-parse', (req: Request, res: Response) => {
+apiRouter.post('/preferences/nlp-parse', async (req: Request, res: Response) => {
   const { prompt } = req.body;
   if (!prompt || typeof prompt !== 'string') {
     return res.status(400).json({ success: false, error: 'Prompt is required' });
   }
 
-  const parsed = NLPPreferenceParser.parse(prompt);
-  res.json({ success: true, data: parsed });
+  try {
+    const parsed = await NLPPreferenceParser.parse(prompt);
+    res.json({ success: true, data: parsed });
+  } catch (error: any) {
+    console.error("NLP Parse Error:", error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to parse preferences' });
+  }
 });
 
 // ----------------------------------------------------

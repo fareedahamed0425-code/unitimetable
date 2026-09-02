@@ -8,227 +8,92 @@ export interface NLPParsedResponse {
 }
 
 export class NLPPreferenceParser {
-  public static parse(prompt: string): NLPParsedResponse {
-    const text = prompt.toLowerCase();
-    const rules: SmartPreferenceRule[] = [];
-    const explanations: string[] = [];
-
-    let idCounter = 1;
-    const generateId = () => `rule-nlp-${Date.now()}-${idCounter++}`;
-
-    // 1. Student Gap Minimization
-    if (text.includes('gap') || text.includes('compact') || text.includes('contiguous') || text.includes('few gaps') || text.includes('minimize gap')) {
-      const isVeryHigh = text.includes('as few gaps as possible') || text.includes('no gap') || text.includes('strict');
-      rules.push({
-        id: generateId(),
-        category: 'STUDENT',
-        ruleCode: 'MINIMIZE_GAPS',
-        name: 'Minimize Student Schedule Gaps',
-        description: 'Keep daily student lectures and labs contiguous with minimum idle waiting hours',
-        targetScope: 'GLOBAL',
-        priority: isVeryHigh ? 'VERY_HIGH' : 'HIGH',
-        weight: isVeryHigh ? 90 : 75,
-        isEnabled: true
-      });
-      explanations.push('Minimize student timetable gaps — High priority');
+  public static async parse(prompt: string): Promise<NLPParsedResponse> {
+    const apiKey = process.env.NVIDIA_API_KEY;
+    if (!apiKey) {
+      throw new Error("NVIDIA_API_KEY is missing in environment variables.");
     }
 
-    // 2. Late Classes Avoidance (e.g. after 4 PM, after 5 PM, no late classes)
-    if (text.includes('after 4') || text.includes('after 5') || text.includes('no late') || text.includes('avoid late') || text.includes('finish early') || text.includes('between 9') || text.includes('by 4')) {
-      let maxPeriod = 6;
-      if (text.includes('after 4') || text.includes('by 4') || text.includes('between 9 am and 4 pm') || text.includes('between 9 and 4')) {
-        maxPeriod = 6;
-      } else if (text.includes('after 5') || text.includes('by 5')) {
-        maxPeriod = 7;
-      }
-      rules.push({
-        id: generateId(),
-        category: 'STUDENT',
-        ruleCode: 'AVOID_LATE_CLASSES',
-        name: `Avoid Late Classes (After Period ${maxPeriod})`,
-        description: `Do not schedule student lectures in late evening slots beyond period ${maxPeriod}`,
-        targetScope: 'GLOBAL',
-        priority: 'HIGH',
-        weight: 80,
-        parameterValue: { maxPeriod },
-        isEnabled: true
-      });
-      explanations.push(`No classes after ${maxPeriod >= 7 ? '5:00 PM' : '4:00 PM'} — High priority`);
-    }
+    const invoke_url = "https://integrate.api.nvidia.com/v1/chat/completions";
 
-    // 3. Early Classes Avoidance
-    if (text.includes('avoid early') || text.includes('no 9 am') || text.includes('no early') || text.includes('prefer late morning')) {
-      rules.push({
-        id: generateId(),
-        category: 'STUDENT',
-        ruleCode: 'AVOID_EARLY_CLASSES',
-        name: 'Avoid First Period (Early Morning 9 AM)',
-        description: 'Minimize scheduling classes in the earliest morning slot',
-        targetScope: 'GLOBAL',
-        priority: 'MEDIUM',
-        weight: 60,
-        isEnabled: true
-      });
-      explanations.push('Avoid early 9:00 AM classes where feasible — Medium priority');
-    }
+    const systemPrompt = `You are a Smart Timetabling Preference Parser.
+You receive natural language preferences from university administrators about timetables.
+Extract scheduling rules from the input and return them as a JSON array of "SmartPreferenceRule" objects.
+Also provide a "summary" string explaining the rules found.
 
-    // 4. Afternoon Labs
-    if (text.includes('afternoon lab') || text.includes('labs in the afternoon') || text.includes('labs preferably in the afternoon') || text.includes('practical in afternoon')) {
-      rules.push({
-        id: generateId(),
-        category: 'STUDENT',
-        ruleCode: 'PREFER_AFTERNOON_LABS',
-        name: 'Prefer Afternoon Practical Labs',
-        description: 'Schedule multi-hour practical laboratory sessions during afternoon periods (after lunch)',
-        targetScope: 'GLOBAL',
-        priority: 'HIGH',
-        weight: 80,
-        isEnabled: true
-      });
-      explanations.push('Place laboratory practicals in afternoon sessions — High priority');
+Respond ONLY with valid JSON in this exact structure, with no markdown formatting or extra text. Example:
+{
+  "summary": "String explaining the rules",
+  "interpretedRules": [
+    {
+      "id": "rule-nlp-timestamp-1",
+      "category": "STUDENT",
+      "ruleCode": "MINIMIZE_GAPS",
+      "name": "Minimize Gaps",
+      "description": "Keep student schedule gap free",
+      "targetScope": "GLOBAL",
+      "priority": "HIGH",
+      "weight": 80,
+      "parameterValue": {},
+      "isEnabled": true
     }
+  ],
+  "confidence": 0.95
+}`;
 
-    // 5. Teacher Consecutive Classes Limit
-    const consecMatch = text.match(/(\d+)\s*consecutive/);
-    if (consecMatch || text.includes('consecutive') || text.includes('continuous classes')) {
-      const maxConsec = consecMatch ? parseInt(consecMatch[1], 10) : 3;
-      rules.push({
-        id: generateId(),
-        category: 'TEACHER',
-        ruleCode: 'MAX_CONSECUTIVE_CLASSES',
-        name: `Teacher Max ${maxConsec} Consecutive Classes`,
-        description: `Ensure faculty members do not exceed ${maxConsec} consecutive periods of teaching without a break`,
-        targetScope: 'GLOBAL',
-        priority: 'VERY_HIGH',
-        weight: 90,
-        parameterValue: { maxConsecutive: maxConsec },
-        isEnabled: true
-      });
-      explanations.push(`Maximum ${maxConsec} consecutive teacher periods — High priority`);
-    }
-
-    // 6. Day restrictions (Avoid Saturday, Free Friday afternoon)
-    if (text.includes('saturday') || text.includes('saturdays') || text.includes('weekend')) {
-      rules.push({
-        id: generateId(),
-        category: 'UNIVERSITY',
-        ruleCode: 'AVOID_SATURDAY',
-        name: 'Avoid Saturday Classes',
-        description: 'Concentrate all academic activities from Monday to Friday',
-        targetScope: 'GLOBAL',
-        priority: 'VERY_HIGH',
-        weight: 95,
-        isEnabled: true
-      });
-      explanations.push('Avoid Saturday scheduling — Very High priority');
-    }
-
-    if (text.includes('friday afternoon') || text.includes('free friday') || text.includes('friday off')) {
-      rules.push({
-        id: generateId(),
-        category: 'UNIVERSITY',
-        ruleCode: 'FREE_FRIDAY_AFTERNOON',
-        name: 'Free Friday Afternoon',
-        description: 'Keep Friday afternoon open for faculty meetings, seminars and student clubs',
-        targetScope: 'GLOBAL',
-        priority: 'HIGH',
-        weight: 75,
-        isEnabled: true
-      });
-      explanations.push('Keep Friday afternoons free — High priority');
-    }
-
-    // 7. Teacher gaps
-    if (text.includes('teacher gap') || text.includes('faculty gap') || text.includes('faculty friendly')) {
-      rules.push({
-        id: generateId(),
-        category: 'TEACHER',
-        ruleCode: 'MINIMIZE_TEACHER_GAPS',
-        name: 'Minimize Teacher Idle Gaps',
-        description: 'Consolidate faculty teaching blocks to avoid scattered idle time',
-        targetScope: 'GLOBAL',
-        priority: 'HIGH',
-        weight: 80,
-        isEnabled: true
-      });
-      explanations.push('Minimize faculty idle gaps between lectures — High priority');
-    }
-
-    // 8. Room Hopping & Utilization
-    if (text.includes('room change') || text.includes('building change') || text.includes('room hop') || text.includes('same room')) {
-      rules.push({
-        id: generateId(),
-        category: 'ROOM',
-        ruleCode: 'MINIMIZE_BUILDING_CHANGES',
-        name: 'Minimize Building & Room Changes',
-        description: 'Keep consecutive classes for a cohort in the same physical building',
-        targetScope: 'GLOBAL',
-        priority: 'MEDIUM',
-        weight: 70,
-        isEnabled: true
-      });
-      explanations.push('Minimize inter-building transit for student cohorts — Medium priority');
-    }
-
-    if (text.includes('room utilization') || text.includes('room efficiency') || text.includes('maximize rooms')) {
-      rules.push({
-        id: generateId(),
-        category: 'ROOM',
-        ruleCode: 'MAX_ROOM_UTILIZATION',
-        name: 'Maximize Room Occupancy Efficiency',
-        description: 'Fill classrooms and auditoriums closest to their total capacity',
-        targetScope: 'GLOBAL',
-        priority: 'MEDIUM',
-        weight: 65,
-        isEnabled: true
-      });
-      explanations.push('Maximize room utilization efficiency — Medium priority');
-    }
-
-    // Fallback: If no specific keywords triggered, construct balanced rules
-    if (rules.length === 0) {
-      rules.push({
-        id: generateId(),
-        category: 'STUDENT',
-        ruleCode: 'MINIMIZE_GAPS',
-        name: 'Minimize Student Schedule Gaps',
-        description: 'Keep daily student lectures and labs contiguous with minimum idle waiting hours',
-        targetScope: 'GLOBAL',
-        priority: 'HIGH',
-        weight: 80,
-        isEnabled: true
-      });
-      rules.push({
-        id: generateId(),
-        category: 'TEACHER',
-        ruleCode: 'MAX_CONSECUTIVE_CLASSES',
-        name: 'Teacher Max 3 Consecutive Classes',
-        description: 'Ensure faculty members do not exceed 3 consecutive teaching periods',
-        targetScope: 'GLOBAL',
-        priority: 'HIGH',
-        weight: 80,
-        parameterValue: { maxConsecutive: 3 },
-        isEnabled: true
-      });
-      rules.push({
-        id: generateId(),
-        category: 'STUDENT',
-        ruleCode: 'PREFER_AFTERNOON_LABS',
-        name: 'Prefer Afternoon Practical Labs',
-        description: 'Schedule multi-hour practical laboratory sessions during afternoon periods',
-        targetScope: 'GLOBAL',
-        priority: 'MEDIUM',
-        weight: 70,
-        isEnabled: true
-      });
-      explanations.push('Balanced schedule with minimal student gaps and max 3 continuous faculty lectures');
-    }
-
-    return {
-      originalPrompt: prompt,
-      summary: explanations.join('\n• '),
-      interpretedRules: rules,
-      confidence: 0.95
+    const payload = {
+      model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: prompt }
+      ],
+      max_tokens: 4096,
+      reasoning_budget: 1024,
+      temperature: 0.6,
+      top_p: 0.95,
+      stream: false
     };
+
+    try {
+      const response = await fetch(invoke_url, {
+        method: 'POST',
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`NVIDIA API Error: ${response.status} - ${errText}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || "";
+      
+      // Parse JSON from content (it might be wrapped in ```json)
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      const jsonStr = jsonMatch ? jsonMatch[0] : content;
+      
+      const parsedData = JSON.parse(jsonStr);
+
+      // Add generated IDs if missing
+      const rules = (parsedData.interpretedRules || []).map((rule: any, idx: number) => ({
+        ...rule,
+        id: rule.id || `rule-nlp-${Date.now()}-${idx}`
+      }));
+
+      return {
+        originalPrompt: prompt,
+        summary: parsedData.summary || "Parsed using NVIDIA AI",
+        interpretedRules: rules,
+        confidence: parsedData.confidence || 0.95
+      };
+    } catch (error) {
+      console.error("Error parsing preferences with NVIDIA AI:", error);
+      throw new Error("Failed to parse preferences using AI reasoning.");
+    }
   }
 }
