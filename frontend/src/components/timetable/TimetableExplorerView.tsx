@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import * as xlsx from 'xlsx';
 import {
   Calendar,
   Filter,
@@ -20,7 +21,13 @@ import {
   CheckCircle2,
   Sparkles,
   Layers,
-  Clock
+  Clock,
+  Upload,
+  FileUp,
+  AlertCircle,
+  RefreshCw,
+  Database,
+  FileText
 } from 'lucide-react';
 import { api } from '../../api';
 import {
@@ -67,6 +74,24 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
   const [isAddSessionModalOpen, setIsAddSessionModalOpen] = useState(false);
   const [isManageTimetablesModalOpen, setIsManageTimetablesModalOpen] = useState(false);
   const [isCreateTimetableModalOpen, setIsCreateTimetableModalOpen] = useState(false);
+
+  // Upload Timetable state
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadFileName, setUploadFileName] = useState('');
+  const [uploadFileBase64, setUploadFileBase64] = useState('');
+  const [uploadParsedRows, setUploadParsedRows] = useState<any[]>([]);
+  const [uploadPreviewSessions, setUploadPreviewSessions] = useState<any[]>([]);
+  const [uploadSummary, setUploadSummary] = useState<{
+    totalRows: number;
+    sectionsCount: number;
+    teachersCount: number;
+    roomsCount: number;
+  } | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadClearExisting, setUploadClearExisting] = useState(true);
+  const [uploadErrorMsg, setUploadErrorMsg] = useState('');
+  const [uploadSuccessMsg, setUploadSuccessMsg] = useState('');
+  const [isResettingDb, setIsResettingDb] = useState(false);
 
   // Add Session Form state
   const [newSessionDay, setNewSessionDay] = useState<number>(0);
@@ -305,6 +330,263 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
     }
   };
 
+  // Download Sample Template for Apollo University (4 departments)
+  const handleDownloadSampleTemplate = (format: 'xlsx' | 'csv' = 'xlsx') => {
+    const templateData = [
+      {
+        'Day': 'Monday',
+        'Period': 'Period 1 (09:00 - 10:00)',
+        'Course Code': 'CS301',
+        'Course Name': 'Design & Analysis of Algorithms',
+        'Activity Type': 'LECTURE',
+        'Sections': 'CSE-A',
+        'Faculty': 'Dr. Alan Turing',
+        'Room': 'CR-201',
+        'Duration': 1
+      },
+      {
+        'Day': 'Monday',
+        'Period': 'Period 2 (10:00 - 11:00)',
+        'Course Code': 'AI302',
+        'Course Name': 'Foundations of Data Science',
+        'Activity Type': 'LECTURE',
+        'Sections': 'AIDS-A, AIDS-B',
+        'Faculty': 'Prof. Grace Hopper',
+        'Room': 'AUD-101',
+        'Duration': 1
+      },
+      {
+        'Day': 'Monday',
+        'Period': 'Period 3 (11:15 - 12:15)',
+        'Course Code': 'ML303',
+        'Course Name': 'Machine Learning Algorithms',
+        'Activity Type': 'LECTURE',
+        'Sections': 'AIML-A',
+        'Faculty': 'Dr. John McCarthy',
+        'Room': 'CR-301',
+        'Duration': 1
+      },
+      {
+        'Day': 'Monday',
+        'Period': 'Period 4 (12:15 - 13:15)',
+        'Course Code': 'CYS304',
+        'Course Name': 'Network Defense & Cryptography',
+        'Activity Type': 'LECTURE',
+        'Sections': 'CS-A',
+        'Faculty': 'Prof. Claude Shannon',
+        'Room': 'CR-302',
+        'Duration': 1
+      },
+      {
+        'Day': 'Tuesday',
+        'Period': 'Period 5 (14:00 - 15:00)',
+        'Course Code': 'CS301-L',
+        'Course Name': 'Advanced Algorithms Lab',
+        'Activity Type': 'LABORATORY',
+        'Sections': 'CSE-B',
+        'Faculty': 'Dr. Alan Turing',
+        'Room': 'LAB-CSE-1',
+        'Duration': 2
+      },
+      {
+        'Day': 'Wednesday',
+        'Period': 'Period 1 (09:00 - 10:00)',
+        'Course Code': 'AI302-L',
+        'Course Name': 'Big Data Analytics Lab',
+        'Activity Type': 'LABORATORY',
+        'Sections': 'AIDS-B',
+        'Faculty': 'Prof. Grace Hopper',
+        'Room': 'LAB-AIDS-2',
+        'Duration': 2
+      },
+      {
+        'Day': 'Thursday',
+        'Period': 'Period 3 (11:15 - 12:15)',
+        'Course Code': 'ML303-L',
+        'Course Name': 'Deep Neural Networks Lab',
+        'Activity Type': 'LABORATORY',
+        'Sections': 'AIML-B',
+        'Faculty': 'Dr. John McCarthy',
+        'Room': 'LAB-AIML-3',
+        'Duration': 2
+      },
+      {
+        'Day': 'Friday',
+        'Period': 'Period 2 (10:00 - 11:00)',
+        'Course Code': 'CYS304-L',
+        'Course Name': 'Cyber Security Forensics Lab',
+        'Activity Type': 'LABORATORY',
+        'Sections': 'CS-B',
+        'Faculty': 'Prof. Claude Shannon',
+        'Room': 'LAB-CYBER-4',
+        'Duration': 2
+      }
+    ];
+
+    if (format === 'csv') {
+      const headers = Object.keys(templateData[0]);
+      const csvRows = [
+        headers.join(','),
+        ...templateData.map(row => headers.map(h => `"${(row as any)[h]}"`).join(','))
+      ];
+      const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'apollo_timetable_template.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } else {
+      const ws = xlsx.utils.json_to_sheet(templateData);
+      const wb = xlsx.utils.book_new();
+      xlsx.utils.book_append_sheet(wb, ws, 'Timetable');
+      xlsx.writeFile(wb, 'apollo_timetable_template.xlsx');
+    }
+  };
+
+  // Handle Timetable File Selection & Client-side Preview
+  const handleFileSelect = (file: File) => {
+    setUploadErrorMsg('');
+    setUploadSuccessMsg('');
+    setUploadFileName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const buffer = e.target?.result;
+        if (!buffer) return;
+
+        let rows: any[] = [];
+        let base64Str = '';
+
+        if (typeof buffer === 'string') {
+          base64Str = btoa(unescape(encodeURIComponent(buffer)));
+          if (file.name.endsWith('.json')) {
+            const parsed = JSON.parse(buffer);
+            rows = Array.isArray(parsed) ? parsed : (parsed.sessions || parsed.entries || [parsed]);
+          } else {
+            const wb = xlsx.read(buffer, { type: 'string' });
+            rows = xlsx.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+          }
+        } else {
+          const arrayBuffer = buffer as ArrayBuffer;
+          const bytes = new Uint8Array(arrayBuffer);
+          let binary = '';
+          for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          base64Str = btoa(binary);
+
+          const wb = xlsx.read(arrayBuffer, { type: 'array' });
+          rows = xlsx.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+        }
+
+        setUploadFileBase64(base64Str);
+        setUploadParsedRows(rows);
+
+        // Calculate preview metrics
+        const sectionsSet = new Set<string>();
+        const teachersSet = new Set<string>();
+        const roomsSet = new Set<string>();
+
+        rows.forEach(r => {
+          Object.entries(r).forEach(([k, v]) => {
+            const strVal = String(v).trim();
+            const keyLower = k.toLowerCase();
+            if (keyLower.includes('sec') || keyLower.includes('class') || keyLower.includes('batch')) {
+              strVal.split(/[,;&+/]+/).forEach(s => s.trim() && sectionsSet.add(s.trim().toUpperCase()));
+            }
+            if (keyLower.includes('teach') || keyLower.includes('fac') || keyLower.includes('prof') || keyLower.includes('inst')) {
+              strVal.split(/[,;&+/]+/).forEach(t => t.trim() && teachersSet.add(t.trim()));
+            }
+            if (keyLower.includes('room') || keyLower.includes('venue') || keyLower.includes('hall') || keyLower.includes('lab')) {
+              if (strVal) roomsSet.add(strVal.toUpperCase());
+            }
+          });
+        });
+
+        setUploadSummary({
+          totalRows: rows.length,
+          sectionsCount: sectionsSet.size || 1,
+          teachersCount: teachersSet.size || 1,
+          roomsCount: roomsSet.size || 1
+        });
+        setUploadPreviewSessions(rows.slice(0, 6));
+      } catch (err: any) {
+        console.error('File parsing error:', err);
+        setUploadErrorMsg('Failed to parse file format: ' + err.message);
+      }
+    };
+
+    if (file.name.endsWith('.csv') || file.name.endsWith('.json') || file.name.endsWith('.xml') || file.name.endsWith('.fet')) {
+      reader.readAsText(file);
+    } else {
+      reader.readAsArrayBuffer(file);
+    }
+  };
+
+  const handleApplyUpload = async () => {
+    if (!uploadFileBase64 && uploadParsedRows.length === 0) {
+      setUploadErrorMsg('Please select a timetable file first.');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadErrorMsg('');
+    setUploadSuccessMsg('');
+
+    try {
+      const res = await api.uploadTimetableExtract({
+        fileBase64: uploadFileBase64,
+        fileName: uploadFileName,
+        rawRows: uploadParsedRows,
+        clearExisting: uploadClearExisting,
+        timetableId: timetable?.id || 'tt-active'
+      });
+
+      if (res.success && res.data) {
+        setUploadSuccessMsg(
+          `Successfully extracted and scheduled ${res.data.insertedEntriesCount} class sessions across the university grid!`
+        );
+        setTimeout(async () => {
+          setIsUploadModalOpen(false);
+          await loadHierarchySections();
+          await loadActivitiesAndCourses();
+          onRefresh();
+        }, 1200);
+      } else {
+        setUploadErrorMsg(res.error || 'Failed to extract and update timetable.');
+      }
+    } catch (err: any) {
+      console.error('Upload extract error:', err);
+      setUploadErrorMsg(err.message || 'Error occurred while processing upload.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleResetDatabaseClean = async () => {
+    if (!confirm('Are you sure you want to reset the database? This will purge all mockup data and restore the clean 4-department hierarchy (CSE, AI&DS, AI&ML, Cyber Security).')) return;
+    setIsResettingDb(true);
+    try {
+      const res = await api.resetDatabase();
+      if (res.success) {
+        alert('Database successfully reset to clean 4-department configuration!');
+        await loadHierarchySections();
+        await loadActivitiesAndCourses();
+        loadTimetablesList();
+        onRefresh();
+      } else {
+        alert(res.error || 'Failed to reset database.');
+      }
+    } catch (err: any) {
+      alert('Error resetting database: ' + err.message);
+    } finally {
+      setIsResettingDb(false);
+    }
+  };
+
   const handleExportCsv = () => {
     if (!timetable || timetable.entries.length === 0) return;
     const headers = ['Day', 'Period', 'Course Code', 'Course Name', 'Type', 'Room', 'Teachers', 'Cohorts'];
@@ -412,8 +694,21 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
           )}
         </div>
 
-        {/* Right: Add Session, Manage Timetables, Export Suite */}
+        {/* Right: Upload Timetable, Add Session, Manage Timetables, Export Suite */}
         <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-start lg:justify-end">
+          {/* Upload Timetable Button */}
+          <button
+            onClick={() => {
+              setUploadErrorMsg('');
+              setUploadSuccessMsg('');
+              setIsUploadModalOpen(true);
+            }}
+            className="lux-btn text-xs py-1.5 px-3 bg-[#002E4E] hover:bg-[#003B64] text-white flex items-center gap-1.5 rounded-lg shadow-xs flex-1 sm:flex-initial justify-center font-semibold transition-all hover:scale-[1.02]"
+          >
+            <Upload className="w-3.5 h-3.5 text-[#E6C200]" />
+            <span>Upload Timetable</span>
+          </button>
+
           {/* Add Class Button */}
           <button
             onClick={() => {
@@ -421,7 +716,7 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
               setNewSessionPeriod(0);
               setIsAddSessionModalOpen(true);
             }}
-            className="lux-btn lux-btn-gold text-xs py-1.5 px-3 flex items-center gap-1.5 rounded-lg shadow-xs flex-1 sm:flex-initial justify-center"
+            className="lux-btn lux-btn-gold text-xs py-1.5 px-3 flex items-center gap-1.5 rounded-lg shadow-xs flex-1 sm:flex-initial justify-center font-semibold"
           >
             <Plus className="w-3.5 h-3.5 text-[#002E4E]" />
             <span>Add Class</span>
@@ -1097,7 +1392,238 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
         </div>
       )}
 
-      {/* 5. SELECTED SESSION INSPECTOR DRAWER */}
+      {/* 5. UPLOAD TIMETABLE & INTELLIGENT EXTRACTION MODAL */}
+      {isUploadModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-[#D8E6ED] shadow-2xl max-w-3xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto animate-scaleUp">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-[#D8E6ED] pb-3.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-[#EBF4F7] border border-[#D8E6ED] flex items-center justify-center text-[#2582A1]">
+                  <Upload className="w-4 h-4 text-[#2582A1]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#002E4E]">Upload & Auto-Schedule Timetable</h3>
+                  <p className="text-xs text-[#4A6375]">
+                    Upload Excel (.xlsx/.xls), CSV, or JSON. The engine will extract sessions, resolve faculty & cohorts, and populate the grid.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsUploadModalOpen(false)}
+                className="p-1.5 rounded-lg text-[#4A6375] hover:text-[#002E4E] hover:bg-[#F4F8FA] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Template Download Banner */}
+            <div className="p-3.5 rounded-xl bg-gradient-to-r from-[#EBF4F7] to-[#F4F8FA] border border-[#BCE1EE] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <FileSpreadsheet className="w-5 h-5 text-[#2582A1] shrink-0" />
+                <div>
+                  <div className="text-xs font-bold text-[#002E4E]">Pre-Formatted Apollo University Template</div>
+                  <div className="text-[11px] text-[#4A6375]">Includes CSE, AI&DS, AI&ML, and Cyber Security sample rows & periods.</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => handleDownloadSampleTemplate('xlsx')}
+                  className="lux-btn text-[11px] py-1.5 px-3 bg-white border border-[#BCE1EE] hover:bg-white/80 text-[#002E4E] flex items-center gap-1.5 rounded-lg font-semibold shadow-2xs"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#2582A1]" />
+                  <span>Download .XLSX</span>
+                </button>
+                <button
+                  onClick={() => handleDownloadSampleTemplate('csv')}
+                  className="lux-btn text-[11px] py-1.5 px-2.5 bg-white border border-[#BCE1EE] hover:bg-white/80 text-[#4A6375] flex items-center gap-1 rounded-lg font-medium"
+                >
+                  <span>CSV</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Drag & Drop File Picker */}
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                  handleFileSelect(e.dataTransfer.files[0]);
+                }
+              }}
+              className="border-2 border-dashed border-[#BCE1EE] hover:border-[#2582A1] rounded-2xl p-6 text-center bg-[#F9FBFC] transition-colors cursor-pointer relative"
+            >
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv,.json,.xml,.fet"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    handleFileSelect(e.target.files[0]);
+                  }
+                }}
+                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+              />
+              <div className="flex flex-col items-center justify-center gap-2 pointer-events-none">
+                <div className="w-10 h-10 rounded-2xl bg-[#EBF4F7] flex items-center justify-center text-[#2582A1]">
+                  <FileUp className="w-5 h-5 text-[#2582A1]" />
+                </div>
+                {uploadFileName ? (
+                  <div>
+                    <div className="text-xs font-bold text-[#002E4E] flex items-center justify-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>{uploadFileName}</span>
+                    </div>
+                    <div className="text-[11px] text-[#4A6375] mt-0.5">
+                      {uploadParsedRows.length} total rows parsed from file
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="text-xs font-bold text-[#002E4E]">
+                      Click to choose timetable file or drag and drop here
+                    </div>
+                    <div className="text-[11px] text-[#4A6375] mt-0.5">
+                      Supports Excel (.xlsx, .xls), CSV, JSON, and FET XML formats
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Live Extraction Preview Metrics */}
+            {uploadSummary && (
+              <div className="space-y-3 pt-1">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="p-2.5 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] text-center">
+                    <div className="text-xs text-[#4A6375] font-semibold">Total Sessions</div>
+                    <div className="text-lg font-bold text-[#002E4E]">{uploadSummary.totalRows}</div>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] text-center">
+                    <div className="text-xs text-[#4A6375] font-semibold">Class Sections</div>
+                    <div className="text-lg font-bold text-[#2582A1]">{uploadSummary.sectionsCount}</div>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] text-center">
+                    <div className="text-xs text-[#4A6375] font-semibold">Instructors</div>
+                    <div className="text-lg font-bold text-amber-700">{uploadSummary.teachersCount}</div>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] text-center">
+                    <div className="text-xs text-[#4A6375] font-semibold">Venues / Rooms</div>
+                    <div className="text-lg font-bold text-emerald-700">{uploadSummary.roomsCount}</div>
+                  </div>
+                </div>
+
+                {/* Preview Table */}
+                {uploadPreviewSessions.length > 0 && (
+                  <div className="border border-[#D8E6ED] rounded-xl overflow-hidden text-xs">
+                    <div className="bg-[#F4F8FA] px-3 py-1.5 font-bold text-[#002E4E] border-b border-[#D8E6ED] flex items-center justify-between text-[11px]">
+                      <span>Extracted Data Preview (First {uploadPreviewSessions.length} records)</span>
+                      <span className="text-[#2582A1]">Auto-Mapped to Apollo Structure</span>
+                    </div>
+                    <div className="max-h-36 overflow-y-auto overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead className="bg-[#F9FBFC] text-[#4A6375] text-[10px] uppercase border-b border-[#D8E6ED]">
+                          <tr>
+                            {Object.keys(uploadPreviewSessions[0]).slice(0, 6).map((k) => (
+                              <th key={k} className="p-2 font-bold">{k}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#D8E6ED] text-[11px] text-[#002E4E]">
+                          {uploadPreviewSessions.map((row, idx) => (
+                            <tr key={idx} className="hover:bg-[#F4F8FA]/50">
+                              {Object.values(row).slice(0, 6).map((val: any, cIdx) => (
+                                <td key={cIdx} className="p-2 truncate max-w-[140px]">
+                                  {String(val || '-')}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Overwrite Option */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-[#FFFDF5] border border-amber-200 text-xs">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={uploadClearExisting}
+                  onChange={(e) => setUploadClearExisting(e.target.checked)}
+                  className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4"
+                />
+                <span className="font-semibold text-amber-950">
+                  Replace all existing active timetable sessions with this upload
+                </span>
+              </label>
+              <span className="text-[10px] text-amber-800 font-medium hidden sm:inline">
+                Recommended for clean timetable import
+              </span>
+            </div>
+
+            {/* Error / Success Feedback */}
+            {uploadErrorMsg && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                <span>{uploadErrorMsg}</span>
+              </div>
+            )}
+            {uploadSuccessMsg && (
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                <span>{uploadSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-3 border-t border-[#D8E6ED]">
+              <button
+                type="button"
+                onClick={handleResetDatabaseClean}
+                disabled={isResettingDb}
+                className="lux-btn text-xs py-2 px-3 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 flex items-center gap-1.5 rounded-xl font-semibold w-full sm:w-auto justify-center"
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>{isResettingDb ? 'Purging Mock Data...' : 'Reset Clean Hierarchy (4 Depts)'}</span>
+              </button>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsUploadModalOpen(false)}
+                  className="lux-btn text-xs py-2 px-3.5 bg-white border border-[#D8E6ED] hover:bg-[#F4F8FA] text-[#4A6375] rounded-xl font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyUpload}
+                  disabled={isUploading || (!uploadFileBase64 && uploadParsedRows.length === 0)}
+                  className="lux-btn lux-btn-gold text-xs py-2 px-4 rounded-xl font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                >
+                  {isUploading ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#002E4E]" />
+                      <span>Extracting & Applying...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5 text-[#002E4E]" />
+                      <span>Apply to Timetable Grid</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. SELECTED SESSION INSPECTOR DRAWER */}
       {selectedEntry && (() => {
         const isCombined = selectedEntry.isCombined || (selectedEntry.sectionNames && selectedEntry.sectionNames.length > 1);
         return (

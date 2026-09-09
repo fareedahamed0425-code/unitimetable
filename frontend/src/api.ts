@@ -397,6 +397,41 @@ export const api = {
     return url('fet/export/xml');
   },
 
+  // Timetable Upload & Intelligent Extraction
+  async uploadTimetableExtract(params: {
+    fileBase64?: string;
+    fileName?: string;
+    rawRows?: any[];
+    clearExisting?: boolean;
+    timetableId?: string;
+  }): Promise<{
+    success: boolean;
+    data?: {
+      extractedSessionsCount: number;
+      insertedEntriesCount: number;
+      conflictsCount: number;
+      qualityScore: QualityScore;
+      sessionsPreview: any[];
+    };
+    error?: string;
+  }> {
+    const res = await fetch(url('timetables/upload-extract'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    return res.json();
+  },
+
+  // Admin Database Reset
+  async resetDatabase(): Promise<{ success: boolean; message?: string; error?: string }> {
+    const res = await fetch(url('admin/reset-database'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return res.json();
+  },
+
   // Analytics & Audit
   async getAnalytics(): Promise<any> {
     const res = await fetch(url('analytics'));

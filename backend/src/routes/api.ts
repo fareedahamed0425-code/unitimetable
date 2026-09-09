@@ -1,5 +1,6 @@
 import { Request, Response, Router } from 'express';
-import { db, runInTransaction, writeThroughPg, pgQuery, pgExecute } from '../db/database';
+import * as xlsx from 'xlsx';
+import { db, runInTransaction, writeThroughPg, pgQuery, pgExecute, isPostgresConfigured } from '../db/database';
 import { ConflictEngine } from '../engine/conflictEngine';
 import { CSPSolver } from '../engine/cspSolver';
 import { ExplainEngine } from '../engine/explainEngine';
@@ -11,6 +12,8 @@ import { FETExporter } from '../fet/fetExporter';
 import { FETParser } from '../fet/fetParser';
 import { NLPPreferenceParser } from '../nlp/nlpPreferenceParser';
 import { hashPassword, verifyPassword, generateAuthToken } from '../utils/auth';
+import { seedDatabase } from '../db/seed';
+import { seedPostgres } from '../db/seed_postgres';
 
 import {
   Activity,
@@ -1520,5 +1523,567 @@ apiRouter.get('/audit-logs', (req: Request, res: Response) => {
   res.json({ success: true, data: logs });
 });
 
+// ----------------------------------------------------
+// 12. TIMETABLE UPLOAD & INTELLIGENT EXTRACTION ENGINE
+// ----------------------------------------------------
+interface ParsedSessionRow {
+  dayOfWeek: number;
+  dayName: string;
+  periodIndex: number;
+  courseCode: string;
+  courseName: string;
+  activityType: 'LECTURE' | 'LABORATORY' | 'TUTORIAL' | 'SEMINAR';
+  duration: number;
+  sectionNames: string[];
+  teacherNames: string[];
+  roomCode: string;
+  isCombined?: boolean;
+}
 
+function parseDayString(raw: any): { dayIndex: number; dayName: string } {
+  if (typeof raw === 'number' && raw >= 0 && raw <= 6) {
+    const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return { dayIndex: raw, dayName: dayNames[raw] };
+  }
+  const str = String(raw || '').trim().toLowerCase();
+  if (str.startsWith('mon') || str === '0') return { dayIndex: 0, dayName: 'Monday' };
+  if (str.startsWith('tue') || str === '1') return { dayIndex: 1, dayName: 'Tuesday' };
+  if (str.startsWith('wed') || str === '2') return { dayIndex: 2, dayName: 'Wednesday' };
+  if (str.startsWith('thu') || str === '3') return { dayIndex: 3, dayName: 'Thursday' };
+  if (str.startsWith('fri') || str === '4') return { dayIndex: 4, dayName: 'Friday' };
+  if (str.startsWith('sat') || str === '5') return { dayIndex: 5, dayName: 'Saturday' };
+  if (str.startsWith('sun') || str === '6') return { dayIndex: 6, dayName: 'Sunday' };
+  return { dayIndex: 0, dayName: 'Monday' };
+}
 
+function parsePeriodString(raw: any): number {
+  if (typeof raw === 'number') {
+    if (raw >= 1 && raw <= 8) return raw - 1; // 1-based period index
+    if (raw >= 0 && raw <= 7) return raw;
+  }
+  const str = String(raw || '').trim().toLowerCase();
+  // Extract number like "Period 3" -> 2 or "P3" -> 2 or "Slot 2" -> 1
+  const periodMatch = str.match(/p(?:eriod)?\s*(\d+)/i) || str.match(/slot\s*(\d+)/i) || str.match(/^(\d+)$/);
+  if (periodMatch) {
+    const num = parseInt(periodMatch[1], 10);
+    return num >= 1 && num <= 8 ? num - 1 : Math.max(0, Math.min(7, num));
+  }
+  // Time ranges
+  if (str.includes('9:00') || str.includes('09:00')) return 0;
+  if (str.includes('10:00')) return 1;
+  if (str.includes('11:15') || str.includes('11:00')) return 2;
+  if (str.includes('12:15') || str.includes('12:00')) return 3;
+  if (str.includes('13:15') || str.includes('1:15')) return 4;
+  if (str.includes('14:00') || str.includes('2:00')) return 5;
+  if (str.includes('15:00') || str.includes('3:00')) return 6;
+  if (str.includes('16:00') || str.includes('4:00')) return 7;
+  return 0;
+}
+
+apiRouter.post('/timetables/upload-extract', async (req: Request, res: Response) => {
+  try {
+    const {
+      fileBase64,
+      fileName = 'timetable.xlsx',
+      rawRows,
+      clearExisting = true,
+      timetableId = 'tt-active'
+    } = req.body;
+
+    let rowsToProcess: any[] = [];
+
+    if (rawRows && Array.isArray(rawRows) && rawRows.length > 0) {
+      rowsToProcess = rawRows;
+    } else if (fileBase64) {
+      const buffer = Buffer.from(fileBase64, 'base64');
+      if (fileName.endsWith('.json')) {
+        const text = buffer.toString('utf-8');
+        const parsedJson = JSON.parse(text);
+        rowsToProcess = Array.isArray(parsedJson) ? parsedJson : (parsedJson.sessions || parsedJson.entries || [parsedJson]);
+      } else {
+        const workbook = xlsx.read(buffer, { type: 'buffer' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        rowsToProcess = xlsx.utils.sheet_to_json(worksheet, { defval: '' });
+      }
+    } else {
+      return res.status(400).json({ success: false, error: 'No file content or rows provided for timetable extraction' });
+    }
+
+    if (!rowsToProcess || rowsToProcess.length === 0) {
+      return res.status(400).json({ success: false, error: 'The uploaded file contains no data rows.' });
+    }
+
+    // Extract sessions with intelligent fuzzy header recognition
+    const parsedSessions: ParsedSessionRow[] = [];
+
+    // Helper to find header key
+    const findKey = (row: any, patterns: RegExp[]): string | undefined => {
+      const keys = Object.keys(row);
+      for (const pattern of patterns) {
+        const found = keys.find(k => pattern.test(k.trim()));
+        if (found) return found;
+      }
+      return undefined;
+    };
+
+    // Check if table is in matrix format (e.g. Columns are Monday, Tuesday, etc.)
+    const sampleRow = rowsToProcess[0] || {};
+    const sampleKeys = Object.keys(sampleRow).map(k => k.toLowerCase().trim());
+    const dayColumns = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].filter(d => 
+      sampleKeys.some(k => k.includes(d))
+    );
+
+    if (dayColumns.length >= 2) {
+      // Matrix format!
+      for (let rIdx = 0; rIdx < rowsToProcess.length; rIdx++) {
+        const row = rowsToProcess[rIdx];
+        const periodKey = Object.keys(row).find(k => /(period|time|slot|hour)/i.test(k));
+        const periodIndex = periodKey ? parsePeriodString(row[periodKey]) : rIdx % 8;
+
+        for (const dayCol of dayColumns) {
+          const matchingKey = Object.keys(row).find(k => k.toLowerCase().trim().includes(dayCol));
+          if (!matchingKey) continue;
+          const cellVal = String(row[matchingKey] || '').trim();
+          if (!cellVal || cellVal.toLowerCase() === 'break' || cellVal.toLowerCase() === 'lunch' || cellVal === '-') continue;
+
+          // Parse cellVal e.g. "CS301 (CSE-A)\nDr. Alan Turing\nCR-201"
+          const lines = cellVal.split(/[\n;\r]+/).map(s => s.trim()).filter(Boolean);
+          let courseCode = 'CS301';
+          let courseName = 'Academic Session';
+          let sectionNames = ['CSE-A'];
+          let teacherNames = ['Faculty Instructor'];
+          let roomCode = 'CR-201';
+
+          if (lines.length === 1) {
+            // e.g. "CS301 - Data Structures | CSE-A | Dr. Turing | CR-201"
+            const parts = lines[0].split(/[|,\-–]/).map(s => s.trim()).filter(Boolean);
+            if (parts[0]) courseCode = parts[0];
+            if (parts[1]) courseName = parts[1];
+            if (parts[2]) sectionNames = [parts[2]];
+            if (parts[3]) teacherNames = [parts[3]];
+            if (parts[4]) roomCode = parts[4];
+          } else {
+            // Multiple lines
+            const line0 = lines[0] || '';
+            const codeMatch = line0.match(/^([A-Z0-9]{3,8})/i);
+            if (codeMatch) courseCode = codeMatch[1].toUpperCase();
+            courseName = line0.replace(codeMatch ? codeMatch[0] : '', '').replace(/[()\-–]/g, ' ').trim() || courseCode;
+
+            // Check for section in line 0 or line 1
+            const secMatch = cellVal.match(/(CSE-[A-Z]|AIDS-[A-Z]|AIML-[A-Z]|CS-[A-Z]|Sec-[A-Z]|[A-Z]{2,4}-[A-Z])/i);
+            if (secMatch) sectionNames = [secMatch[0].toUpperCase()];
+
+            if (lines.length > 1) {
+              teacherNames = [lines[1].replace(/^(Dr\.|Prof\.|Mr\.|Ms\.)\s*/i, 'Prof. ')];
+            }
+            if (lines.length > 2) {
+              const rmMatch = lines[2].match(/(CR-\d+|LAB-[A-Z0-9\-]+|AUD-\d+|[A-Z0-9\-]{2,10})/i);
+              if (rmMatch) roomCode = rmMatch[0].toUpperCase();
+            }
+          }
+
+          const { dayIndex, dayName } = parseDayString(dayCol);
+          parsedSessions.push({
+            dayOfWeek: dayIndex,
+            dayName,
+            periodIndex,
+            courseCode: courseCode.toUpperCase(),
+            courseName: courseName || courseCode,
+            activityType: courseName.toLowerCase().includes('lab') ? 'LABORATORY' : 'LECTURE',
+            duration: 1,
+            sectionNames,
+            teacherNames,
+            roomCode: roomCode.toUpperCase(),
+            isCombined: sectionNames.length > 1 || teacherNames.length > 1
+          });
+        }
+      }
+    } else {
+      // Standard Columnar Format
+      for (const row of rowsToProcess) {
+        const dayKey = findKey(row, [/(day|weekday|day_of_week|day of week)/i]);
+        const periodKey = findKey(row, [/(period|slot|period_index|period index|time|hour)/i]);
+        const codeKey = findKey(row, [/(course_?code|sub(ject)?_?code|code)/i]);
+        const nameKey = findKey(row, [/(course_?name|sub(ject)?_?name|course|subject|title|name)/i]);
+        const typeKey = findKey(row, [/(activity_?type|type|class_?type|session_?type)/i]);
+        const secKey = findKey(row, [/(section|sections|class|classes|batch|cohort|cohorts|target)/i]);
+        const teacherKey = findKey(row, [/(teacher|teachers|faculty|instructor|prof|professor)/i]);
+        const roomKey = findKey(row, [/(room|venue|hall|lab|classroom|location)/i]);
+        const durKey = findKey(row, [/(duration|periods|hours)/i]);
+
+        const rawDay = dayKey ? row[dayKey] : 0;
+        const rawPeriod = periodKey ? row[periodKey] : 0;
+        const { dayIndex, dayName } = parseDayString(rawDay);
+        const periodIndex = parsePeriodString(rawPeriod);
+
+        const courseCode = String(codeKey ? row[codeKey] : (nameKey ? String(row[nameKey]).slice(0, 6) : 'CS301')).trim().toUpperCase() || 'CS301';
+        const courseName = String(nameKey ? row[nameKey] : courseCode).trim() || courseCode;
+
+        let rawType = String(typeKey ? row[typeKey] : '').toUpperCase().trim();
+        let activityType: 'LECTURE' | 'LABORATORY' | 'TUTORIAL' | 'SEMINAR' = 'LECTURE';
+        if (rawType.includes('LAB') || courseName.toLowerCase().includes('lab')) activityType = 'LABORATORY';
+        else if (rawType.includes('TUT')) activityType = 'TUTORIAL';
+        else if (rawType.includes('SEM')) activityType = 'SEMINAR';
+
+        const rawSec = secKey ? String(row[secKey]) : 'CSE-A';
+        const sectionNames = rawSec.split(/[,;&+/]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+        if (sectionNames.length === 0) sectionNames.push('CSE-A');
+
+        const rawTeacher = teacherKey ? String(row[teacherKey]) : 'Faculty Instructor';
+        const teacherNames = rawTeacher.split(/[,;&+/]+/).map(s => s.trim()).filter(Boolean);
+        if (teacherNames.length === 0) teacherNames.push('Faculty Instructor');
+
+        const roomCode = String(roomKey ? row[roomKey] : (activityType === 'LABORATORY' ? 'LAB-CSE-1' : 'CR-201')).trim().toUpperCase() || 'CR-201';
+        const duration = durKey ? Math.max(1, parseInt(String(row[durKey]), 10) || 1) : 1;
+
+        parsedSessions.push({
+          dayOfWeek: dayIndex,
+          dayName,
+          periodIndex,
+          courseCode,
+          courseName,
+          activityType,
+          duration,
+          sectionNames,
+          teacherNames,
+          roomCode,
+          isCombined: sectionNames.length > 1 || teacherNames.length > 1
+        });
+      }
+    }
+
+    if (parsedSessions.length === 0) {
+      return res.status(400).json({ success: false, error: 'Could not extract any timetable sessions from the uploaded file.' });
+    }
+
+    // Now insert / resolve entities in Database
+    const departmentMap: Record<string, string> = {
+      'CSE': 'dept-cse',
+      'AIDS': 'dept-aids',
+      'AI&DS': 'dept-aids',
+      'AIML': 'dept-aiml',
+      'AI&ML': 'dept-aiml',
+      'CS': 'dept-cs',
+      'CYBER': 'dept-cs',
+      'CYS': 'dept-cs'
+    };
+
+    const determineDeptId = (str: string): string => {
+      const upper = str.toUpperCase();
+      for (const [key, dId] of Object.entries(departmentMap)) {
+        if (upper.includes(key)) return dId;
+      }
+      return 'dept-cse';
+    };
+
+    const insertedEntriesCount = runInTransaction(() => {
+      if (clearExisting) {
+        db.prepare('DELETE FROM timetable_entries WHERE timetable_id = ?').run(timetableId);
+        db.prepare('DELETE FROM conflicts WHERE timetable_id = ?').run(timetableId);
+        writeThroughPg('DELETE FROM timetable_entries WHERE timetable_id = ?', [timetableId]);
+        writeThroughPg('DELETE FROM conflicts WHERE timetable_id = ?', [timetableId]);
+      }
+
+      // Pre-fetch caches
+      const allDepts = db.prepare('SELECT id FROM departments').all() as any[];
+      const defaultDeptId = allDepts[0]?.id || 'dept-cse';
+      const allBatches = db.prepare('SELECT id, program_id FROM batches').all() as any[];
+      const defaultBatchId = allBatches[0]?.id || 'batch-cse-2025';
+      const allSems = db.prepare('SELECT id FROM semesters').all() as any[];
+      const defaultSemId = allSems[0]?.id || 'sem-cse-3';
+      const bldMain = 'bld-apollo-tech';
+
+      // Ensure building exists
+      db.prepare(`
+        INSERT INTO buildings (id, campus_id, name, code, total_floors)
+        VALUES (?, 'campus-main', 'Apollo Technology Tower', 'APOLLO-TOW', 5)
+        ON CONFLICT (id) DO NOTHING
+      `).run(bldMain);
+
+      const existingSections = new Map<string, string>();
+      (db.prepare('SELECT id, name FROM sections').all() as any[]).forEach(s => {
+        existingSections.set(s.name.toUpperCase(), s.id);
+      });
+
+      const existingTeachers = new Map<string, string>();
+      (db.prepare('SELECT id, name FROM teachers').all() as any[]).forEach(t => {
+        existingTeachers.set(t.name.toLowerCase().trim(), t.id);
+      });
+
+      const existingCourses = new Map<string, string>();
+      (db.prepare('SELECT id, code FROM courses').all() as any[]).forEach(c => {
+        existingCourses.set(c.code.toUpperCase().trim(), c.id);
+      });
+
+      const existingRooms = new Map<string, string>();
+      (db.prepare('SELECT id, code FROM rooms').all() as any[]).forEach(r => {
+        existingRooms.set(r.code.toUpperCase().trim(), r.id);
+      });
+
+      const insertEntryStmt = db.prepare(`
+        INSERT INTO timetable_entries (
+          id, timetable_id, activity_id, day_of_week, period_index, duration, room_id, is_locked, satisfaction_explanation
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+      `);
+
+      let processedCount = 0;
+
+      for (let i = 0; i < parsedSessions.length; i++) {
+        const session = parsedSessions[i];
+        const deptId = determineDeptId(session.sectionNames.join(' ') + ' ' + session.courseCode);
+
+        // 1. Resolve / Create Course
+        let courseId = existingCourses.get(session.courseCode);
+        if (!courseId) {
+          courseId = `crs-${session.courseCode.toLowerCase().replace(/[^a-z0-9]/g, '') || ('c' + i)}`;
+          const progId = deptId.replace('dept-', 'prog-');
+          try {
+            db.prepare(`
+              INSERT INTO courses (id, code, name, department_id, program_id, semester_number, credits, course_type, required_room_type)
+              VALUES (?, ?, ?, ?, ?, 3, 3, ?, ?)
+              ON CONFLICT (id) DO NOTHING
+            `).run(courseId, session.courseCode, session.courseName, deptId, progId, session.activityType, session.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM');
+            
+            writeThroughPg(`
+              INSERT INTO courses (id, code, name, department_id, program_id, semester_number, credits, course_type, required_room_type)
+              VALUES (?, ?, ?, ?, ?, 3, 3, ?, ?)
+              ON CONFLICT (id) DO NOTHING
+            `, [courseId, session.courseCode, session.courseName, deptId, progId, session.activityType, session.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM']);
+            
+            existingCourses.set(session.courseCode, courseId);
+          } catch (e) {}
+        }
+
+        // 2. Resolve / Create Sections
+        const resolvedSectionIds: string[] = [];
+        for (const secName of session.sectionNames) {
+          let sId = existingSections.get(secName);
+          if (!sId) {
+            sId = `sec-${secName.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+            const targetBatch = allBatches.find(b => b.program_id === deptId.replace('dept-', 'prog-'))?.id || defaultBatchId;
+            const targetSem = allSems.find(s => s.id.includes(deptId.replace('dept-', '')))?.id || defaultSemId;
+            try {
+              db.prepare(`
+                INSERT INTO sections (id, batch_id, semester_id, name, student_count)
+                VALUES (?, ?, ?, ?, 60)
+                ON CONFLICT (id) DO NOTHING
+              `).run(sId, targetBatch, targetSem, secName);
+              
+              writeThroughPg(`
+                INSERT INTO sections (id, batch_id, semester_id, name, student_count)
+                VALUES (?, ?, ?, ?, 60)
+                ON CONFLICT (id) DO NOTHING
+              `, [sId, targetBatch, targetSem, secName]);
+              
+              existingSections.set(secName, sId);
+            } catch (e) {}
+          }
+          resolvedSectionIds.push(sId);
+        }
+
+        // 3. Resolve / Create Teachers
+        const resolvedTeacherIds: string[] = [];
+        for (const tName of session.teacherNames) {
+          const tKey = tName.toLowerCase().trim();
+          let tId = existingTeachers.get(tKey);
+          if (!tId) {
+            const cleanSlug = tName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10);
+            tId = `tch-${cleanSlug || ('t' + i)}`;
+            const empId = `EMP-${Math.floor(1000 + Math.random() * 9000)}`;
+            const email = `${cleanSlug || 'faculty'}@apollouniversity.edu.in`;
+            try {
+              db.prepare(`
+                INSERT INTO teachers (id, employee_id, name, email, department_id, max_consecutive_periods, max_periods_per_day, max_periods_per_week)
+                VALUES (?, ?, ?, ?, ?, 3, 5, 20)
+                ON CONFLICT (id) DO NOTHING
+              `).run(tId, empId, tName, email, deptId);
+
+              writeThroughPg(`
+                INSERT INTO teachers (id, employee_id, name, email, department_id, max_consecutive_periods, max_periods_per_day, max_periods_per_week)
+                VALUES (?, ?, ?, ?, ?, 3, 5, 20)
+                ON CONFLICT (id) DO NOTHING
+              `, [tId, empId, tName, email, deptId]);
+
+              existingTeachers.set(tKey, tId);
+            } catch (e) {}
+          }
+          resolvedTeacherIds.push(tId);
+        }
+
+        // 4. Resolve / Create Room
+        let roomId = existingRooms.get(session.roomCode);
+        if (!roomId) {
+          roomId = `room-${session.roomCode.toLowerCase().replace(/[^a-z0-9]/g, '') || ('r' + i)}`;
+          const rType = session.activityType === 'LABORATORY' || session.roomCode.includes('LAB') ? 'COMPUTER_LAB' : 'CLASSROOM';
+          try {
+            db.prepare(`
+              INSERT INTO rooms (id, building_id, name, code, floor, capacity, room_type, is_accessible, department_id)
+              VALUES (?, ?, ?, ?, 2, 70, ?, 1, ?)
+              ON CONFLICT (id) DO NOTHING
+            `).run(roomId, bldMain, `Room ${session.roomCode}`, session.roomCode, rType, deptId);
+
+            writeThroughPg(`
+              INSERT INTO rooms (id, building_id, name, code, floor, capacity, room_type, is_accessible, department_id)
+              VALUES (?, ?, ?, ?, 2, 70, ?, 1, ?)
+              ON CONFLICT (id) DO NOTHING
+            `, [roomId, bldMain, `Room ${session.roomCode}`, session.roomCode, rType, deptId]);
+
+            existingRooms.set(session.roomCode, roomId);
+          } catch (e) {}
+        }
+
+        // 5. Create Activity Record
+        const actId = `act-${timetableId}-${i}-${Date.now()}`;
+        const actName = `${session.courseName} (${session.sectionNames.join(', ')})`;
+        const studentCount = session.sectionNames.length * 60;
+
+        db.prepare(`
+          INSERT INTO activities (
+            id, code, name, course_id, activity_type, duration_periods, occurrences_per_week, total_student_count, required_room_type
+          ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+        `).run(actId, `ACT-${session.courseCode}-${i}`, actName, courseId, session.activityType, session.duration, studentCount, session.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM');
+
+        writeThroughPg(`
+          INSERT INTO activities (
+            id, code, name, course_id, activity_type, duration_periods, occurrences_per_week, total_student_count, required_room_type
+          ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+        `, [actId, `ACT-${session.courseCode}-${i}`, actName, courseId, session.activityType, session.duration, studentCount, session.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM']);
+
+        // Insert Teacher Assignments
+        for (const tId of resolvedTeacherIds) {
+          const assId = `ata-${actId}-${tId}`;
+          db.prepare('INSERT INTO activity_teacher_assignments (id, activity_id, teacher_id) VALUES (?, ?, ?)').run(assId, actId, tId);
+          writeThroughPg('INSERT INTO activity_teacher_assignments (id, activity_id, teacher_id) VALUES (?, ?, ?)', [assId, actId, tId]);
+        }
+
+        // Insert Student Section Assignments
+        for (const sId of resolvedSectionIds) {
+          const assId = `asa-${actId}-${sId}`;
+          db.prepare('INSERT INTO activity_student_assignments (id, activity_id, section_id) VALUES (?, ?, ?)').run(assId, actId, sId);
+          writeThroughPg('INSERT INTO activity_student_assignments (id, activity_id, section_id) VALUES (?, ?, ?)', [assId, actId, sId]);
+        }
+
+        // 6. Insert Timetable Entry
+        const entryId = `ent-${timetableId}-${i}-${session.dayOfWeek}-${session.periodIndex}`;
+        const explanation = `Imported session for ${session.sectionNames.join(', ')} with ${session.teacherNames.join(', ')} in ${session.roomCode}`;
+
+        insertEntryStmt.run(
+          entryId,
+          timetableId,
+          actId,
+          session.dayOfWeek,
+          session.periodIndex,
+          session.duration,
+          roomId,
+          explanation
+        );
+
+        writeThroughPg(`
+          INSERT INTO timetable_entries (id, timetable_id, activity_id, day_of_week, period_index, duration, room_id, is_locked, satisfaction_explanation)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+        `, [entryId, timetableId, actId, session.dayOfWeek, session.periodIndex, session.duration, roomId, explanation]);
+
+        processedCount++;
+      }
+
+      return processedCount;
+    });
+
+    // Recalculate Quality Score & Conflicts
+    const context = buildProblemContext();
+    const allEntriesRaw = db.prepare('SELECT * FROM timetable_entries WHERE timetable_id = ?').all(timetableId) as any[];
+    const assignments: ActivityAssignment[] = allEntriesRaw.map(e => ({
+      activityId: e.activity_id,
+      dayOfWeek: e.day_of_week,
+      periodIndex: e.period_index,
+      duration: e.duration,
+      roomId: e.room_id,
+      isLocked: Boolean(e.is_locked)
+    }));
+
+    const conflicts = ConflictEngine.detectConflicts(assignments, context);
+    const qualityScore = QualityScorer.calculate(assignments, context);
+
+    runInTransaction(() => {
+      db.prepare(`
+        UPDATE timetables
+        SET quality_score_json = ?, status = 'PUBLISHED', updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(JSON.stringify(qualityScore), timetableId);
+
+      writeThroughPg(`
+        UPDATE timetables
+        SET quality_score_json = ?, status = 'PUBLISHED', updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `, [JSON.stringify(qualityScore), timetableId]);
+
+      db.prepare('DELETE FROM conflicts WHERE timetable_id = ?').run(timetableId);
+      writeThroughPg('DELETE FROM conflicts WHERE timetable_id = ?', [timetableId]);
+
+      const insertConf = db.prepare(`
+        INSERT INTO conflicts (
+          id, timetable_id, severity, conflict_type, title, description,
+          affected_activity_ids_json, affected_teacher_ids_json, affected_student_group_ids_json,
+          affected_room_ids_json, day_of_week, period_index, violated_constraint_rule, suggested_fix
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      conflicts.forEach(c => {
+        insertConf.run(
+          c.id, timetableId, c.severity, c.conflictType, c.title, c.description,
+          JSON.stringify(c.affectedActivityIds), JSON.stringify(c.affectedTeacherIds),
+          JSON.stringify(c.affectedStudentGroupIds), JSON.stringify(c.affectedRoomIds),
+          c.dayOfWeek, c.periodIndex, c.violatedConstraintRule, c.suggestedFix || null
+        );
+
+        writeThroughPg(`
+          INSERT INTO conflicts (
+            id, timetable_id, severity, conflict_type, title, description,
+            affected_activity_ids_json, affected_teacher_ids_json, affected_student_group_ids_json,
+            affected_room_ids_json, day_of_week, period_index, violated_constraint_rule, suggested_fix
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          c.id, timetableId, c.severity, c.conflictType, c.title, c.description,
+          JSON.stringify(c.affectedActivityIds), JSON.stringify(c.affectedTeacherIds),
+          JSON.stringify(c.affectedStudentGroupIds), JSON.stringify(c.affectedRoomIds),
+          c.dayOfWeek, c.periodIndex, c.violatedConstraintRule, c.suggestedFix || null
+        ]);
+      });
+    });
+
+    res.json({
+      success: true,
+      data: {
+        extractedSessionsCount: parsedSessions.length,
+        insertedEntriesCount,
+        conflictsCount: conflicts.length,
+        qualityScore,
+        sessionsPreview: parsedSessions.slice(0, 10)
+      }
+    });
+  } catch (error: any) {
+    console.error('Upload & Extraction Engine Error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to extract timetable file' });
+  }
+});
+
+// ----------------------------------------------------
+// 13. ADMIN DATABASE RESET TO CLEAN 4-DEPT STATE
+// ----------------------------------------------------
+apiRouter.post('/admin/reset-database', async (req: Request, res: Response) => {
+  try {
+    console.log('Initiating database reset to clean 4-department configuration...');
+    seedDatabase(true);
+    if (isPostgresConfigured) {
+      await seedPostgres(true);
+    }
+    res.json({
+      success: true,
+      message: 'Database successfully reset to clean 4-department structure with Super Admin credentials.'
+    });
+  } catch (err: any) {
+    console.error('Reset database failed:', err);
+    res.status(500).json({ success: false, error: err.message || 'Failed to reset database' });
+  }
+});
