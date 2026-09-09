@@ -18,12 +18,31 @@ import {
   User
 } from '../../shared/types';
 
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+function getApiBase(): string {
+  const envUrl = (import.meta.env.VITE_API_URL || '').trim();
+  if (!envUrl) {
+    return '/api';
+  }
+  // Remove trailing slashes
+  let clean = envUrl.replace(/\/+$/, '');
+  // If user provided host URL without /api, append /api
+  if (!clean.endsWith('/api')) {
+    clean = `${clean}/api`;
+  }
+  return clean;
+}
+
+const API_BASE = getApiBase();
+
+function url(path: string): string {
+  const cleanPath = path.replace(/^\/+/, '');
+  return `${API_BASE}/${cleanPath}`;
+}
 
 export const api = {
   // Auth
   async login(email: string, password: string): Promise<{ user: User; token: string }> {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetch(url('auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
@@ -40,7 +59,7 @@ export const api = {
   },
 
   async register(params: { name: string; email: string; password: string; confirmPassword?: string; role?: string }): Promise<{ user: User; token: string }> {
-    const res = await fetch(`${API_BASE}/auth/register`, {
+    const res = await fetch(url('auth/register'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)
@@ -60,7 +79,7 @@ export const api = {
     const token = localStorage.getItem('apollo_auth_token');
     if (!token) return null;
     try {
-      const res = await fetch(`${API_BASE}/auth/me`, {
+      const res = await fetch(url('auth/me'), {
         headers: { Authorization: `Bearer ${token}` }
       });
       const json = await res.json();
@@ -90,7 +109,7 @@ export const api = {
 
   async getUsers(): Promise<User[]> {
     try {
-      const res = await fetch(`${API_BASE}/users`);
+      const res = await fetch(url('users'));
       const json = await res.json();
       return json.data || [];
     } catch {
@@ -100,47 +119,47 @@ export const api = {
 
   // Academic Hierarchy
   async getHierarchy(): Promise<any> {
-    const res = await fetch(`${API_BASE}/hierarchy`);
+    const res = await fetch(url('hierarchy'));
     const json = await res.json();
     return json.data;
   },
 
   // Teachers
   async getTeachers(): Promise<Teacher[]> {
-    const res = await fetch(`${API_BASE}/teachers`);
+    const res = await fetch(url('teachers'));
     const json = await res.json();
     return json.data;
   },
 
   // Courses & Activities
   async getCourses(): Promise<Course[]> {
-    const res = await fetch(`${API_BASE}/courses`);
+    const res = await fetch(url('courses'));
     const json = await res.json();
     return json.data;
   },
 
   async getActivities(): Promise<Activity[]> {
-    const res = await fetch(`${API_BASE}/activities`);
+    const res = await fetch(url('activities'));
     const json = await res.json();
     return json.data;
   },
 
   // Infrastructure & Calendar
   async getInfrastructure(): Promise<{ buildings: Building[]; rooms: Room[] }> {
-    const res = await fetch(`${API_BASE}/infrastructure`);
+    const res = await fetch(url('infrastructure'));
     const json = await res.json();
     return json.data;
   },
 
   async getCalendar(): Promise<TimeSlot[]> {
-    const res = await fetch(`${API_BASE}/calendar`);
+    const res = await fetch(url('calendar'));
     const json = await res.json();
     return json.data;
   },
 
   // Availability
   async getAvailability(): Promise<EntityAvailability[]> {
-    const res = await fetch(`${API_BASE}/availability`);
+    const res = await fetch(url('availability'));
     const json = await res.json();
     return json.data;
   },
@@ -152,7 +171,7 @@ export const api = {
     periodIndex: number;
     state: string;
   }): Promise<void> {
-    await fetch(`${API_BASE}/availability/toggle`, {
+    await fetch(url('availability/toggle'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -161,7 +180,7 @@ export const api = {
 
   // Preferences & NLP
   async getPreferenceProfiles(): Promise<PreferenceProfile[]> {
-    const res = await fetch(`${API_BASE}/preferences/profiles`);
+    const res = await fetch(url('preferences/profiles'));
     const json = await res.json();
     return json.data;
   },
@@ -171,7 +190,7 @@ export const api = {
     summary: string;
     interpretedRules: SmartPreferenceRule[];
   }> {
-    const res = await fetch(`${API_BASE}/preferences/nlp-parse`, {
+    const res = await fetch(url('preferences/nlp-parse'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt })
@@ -182,7 +201,7 @@ export const api = {
 
   // Feasibility & Generation
   async checkFeasibility(profileId?: string): Promise<any> {
-    const res = await fetch(`${API_BASE}/generator/check-feasibility`, {
+    const res = await fetch(url('generator/check-feasibility'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ profileId })
@@ -196,7 +215,7 @@ export const api = {
     profileId?: string;
     customRules?: SmartPreferenceRule[];
   }): Promise<{ jobId: string; job: GenerationJob }> {
-    const res = await fetch(`${API_BASE}/generator/generate`, {
+    const res = await fetch(url('generator/generate'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -206,26 +225,26 @@ export const api = {
   },
 
   async getJobStatus(jobId: string): Promise<GenerationJob> {
-    const res = await fetch(`${API_BASE}/generator/jobs/${jobId}`);
+    const res = await fetch(url(`generator/jobs/${jobId}`));
     const json = await res.json();
     return json.data;
   },
 
   // Timetables
   async getActiveTimetable(): Promise<Timetable | null> {
-    const res = await fetch(`${API_BASE}/timetables/active`);
+    const res = await fetch(url('timetables/active'));
     const json = await res.json();
     return json.data;
   },
 
   async getAllTimetables(): Promise<any[]> {
-    const res = await fetch(`${API_BASE}/timetables`);
+    const res = await fetch(url('timetables'));
     const json = await res.json();
     return json.data;
   },
 
   async createTimetable(data: { name: string; generationMode?: string }): Promise<any> {
-    const res = await fetch(`${API_BASE}/timetables`, {
+    const res = await fetch(url('timetables'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -235,7 +254,7 @@ export const api = {
   },
 
   async duplicateTimetable(id: string): Promise<any> {
-    const res = await fetch(`${API_BASE}/timetables/${id}/duplicate`, {
+    const res = await fetch(url(`timetables/${id}/duplicate`), {
       method: 'POST'
     });
     const json = await res.json();
@@ -243,7 +262,7 @@ export const api = {
   },
 
   async deleteTimetable(id: string): Promise<void> {
-    await fetch(`${API_BASE}/timetables/${id}`, {
+    await fetch(url(`timetables/${id}`), {
       method: 'DELETE'
     });
   },
@@ -257,7 +276,7 @@ export const api = {
     roomId: string;
     isLocked?: boolean;
   }): Promise<{ entryId: string }> {
-    const res = await fetch(`${API_BASE}/timetables/entries`, {
+    const res = await fetch(url('timetables/entries'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -267,7 +286,7 @@ export const api = {
   },
 
   async deleteTimetableEntry(id: string): Promise<void> {
-    await fetch(`${API_BASE}/timetables/entries/${id}`, {
+    await fetch(url(`timetables/entries/${id}`), {
       method: 'DELETE'
     });
   },
@@ -278,7 +297,7 @@ export const api = {
     periodIndex: number;
     roomId?: string;
   }): Promise<{ conflicts: TimetableConflict[]; qualityScore: QualityScore }> {
-    const res = await fetch(`${API_BASE}/timetables/move-entry`, {
+    const res = await fetch(url('timetables/move-entry'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -288,7 +307,7 @@ export const api = {
   },
 
   async toggleLock(entryId: string): Promise<boolean> {
-    const res = await fetch(`${API_BASE}/timetables/toggle-lock`, {
+    const res = await fetch(url('timetables/toggle-lock'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ entryId })
@@ -298,7 +317,7 @@ export const api = {
   },
 
   async setTimetableStatus(status: string): Promise<void> {
-    await fetch(`${API_BASE}/timetables/set-status`, {
+    await fetch(url('timetables/set-status'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status })
@@ -307,7 +326,7 @@ export const api = {
 
   // FET Hub
   async importFET(xmlContent: string, fileName?: string): Promise<{ data: FETParsedData; report: FETCompatibilityReport }> {
-    const res = await fetch(`${API_BASE}/fet/import`, {
+    const res = await fetch(url('fet/import'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ xmlContent, fileName })
@@ -317,18 +336,18 @@ export const api = {
   },
 
   getFetExportUrl(): string {
-    return `${API_BASE}/fet/export/xml`;
+    return url('fet/export/xml');
   },
 
   // Analytics & Audit
   async getAnalytics(): Promise<any> {
-    const res = await fetch(`${API_BASE}/analytics`);
+    const res = await fetch(url('analytics'));
     const json = await res.json();
     return json.data;
   },
 
   async getAuditLogs(): Promise<AuditLog[]> {
-    const res = await fetch(`${API_BASE}/audit-logs`);
+    const res = await fetch(url('audit-logs'));
     const json = await res.json();
     return json.data;
   }
