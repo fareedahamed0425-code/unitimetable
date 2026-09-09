@@ -30,9 +30,10 @@ export async function processTimetableWorkbook(
     persist?: boolean;
     timetableId?: string;
     targetSection?: string; // If set, only process/apply this specific section
+    clearExisting?: boolean;
   } = {}
 ): Promise<IngestionResult> {
-  const { persist = true, timetableId = 'tt-active', targetSection } = options;
+  const { persist = true, timetableId = 'tt-active', targetSection, clearExisting = true } = options;
 
   try {
     // 1. Read workbook and resolve all merged cells
@@ -100,7 +101,7 @@ export async function processTimetableWorkbook(
     // 5. Persist to SQL if requested and valid
     let insertedCounts;
     if (persist && validationReport.isValid) {
-      insertedCounts = updateDatabaseWithTimetables(parsedTimetables, timetableId);
+      insertedCounts = updateDatabaseWithTimetables(parsedTimetables, timetableId, clearExisting);
     }
 
     return {

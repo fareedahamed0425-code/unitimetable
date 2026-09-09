@@ -15,7 +15,8 @@ export interface DatabaseUpdateResult {
  */
 export function updateDatabaseWithTimetables(
   timetables: ParsedTimetableEntity[],
-  timetableId: string = 'tt-active'
+  timetableId: string = 'tt-active',
+  clearExisting: boolean = true
 ): DatabaseUpdateResult {
   return runInTransaction(() => {
     let sectionsCount = 0;
@@ -24,6 +25,14 @@ export function updateDatabaseWithTimetables(
     let roomsCount = 0;
     let activitiesCount = 0;
     let entriesCount = 0;
+
+    // 0. Clear existing entries if requested
+    if (clearExisting) {
+      db.prepare('DELETE FROM timetable_entries WHERE timetable_id = ?').run(timetableId);
+      db.prepare('DELETE FROM conflicts WHERE timetable_id = ?').run(timetableId);
+      writeThroughPg('DELETE FROM timetable_entries WHERE timetable_id = ?', [timetableId]);
+      writeThroughPg('DELETE FROM conflicts WHERE timetable_id = ?', [timetableId]);
+    }
 
     // 1. Resolve Academic Year and Campus
     const currentAy = (db.prepare('SELECT id FROM academic_years WHERE is_current = 1').get() as any)?.id ||
@@ -103,22 +112,24 @@ export function updateDatabaseWithTimetables(
       existingRooms.set(r.code.toUpperCase().trim(), r.id);
     });
 
-    // 2. Clear old entries for the affected sections in this timetable to prevent duplicates
-    const targetSectionNames = Array.from(
-      new Set(timetables.flatMap(t => t.sessions.flatMap(s => s.sectionNames)))
-    );
+    // If not clearExisting, clear old entries for the affected sections to prevent duplicate overlaps
+    if (!clearExisting) {
+      const targetSectionNames = Array.from(
+        new Set(timetables.flatMap(t => t.sessions.flatMap(s => s.sectionNames)))
+      );
 
-    for (const secName of targetSectionNames) {
-      const sId = existingSections.get(secName.toUpperCase());
-      if (sId) {
-        const actIds = (db.prepare(`
-          SELECT activity_id FROM activity_student_assignments WHERE section_id = ?
-        `).all(sId) as any[]).map(a => a.activity_id);
+      for (const secName of targetSectionNames) {
+        const sId = existingSections.get(secName.toUpperCase());
+        if (sId) {
+          const actIds = (db.prepare(`
+            SELECT activity_id FROM activity_student_assignments WHERE section_id = ?
+          `).all(sId) as any[]).map(a => a.activity_id);
 
-        if (actIds.length > 0) {
-          const placeholders = actIds.map(() => '?').join(',');
-          db.prepare(`DELETE FROM timetable_entries WHERE timetable_id = ? AND activity_id IN (${placeholders})`).run(timetableId, ...actIds);
-          writeThroughPg(`DELETE FROM timetable_entries WHERE timetable_id = ? AND activity_id IN (${placeholders})`, [timetableId, ...actIds]);
+          if (actIds.length > 0) {
+            const placeholders = actIds.map(() => '?').join(',');
+            db.prepare(`DELETE FROM timetable_entries WHERE timetable_id = ? AND activity_id IN (${placeholders})`).run(timetableId, ...actIds);
+            writeThroughPg(`DELETE FROM timetable_entries WHERE timetable_id = ? AND activity_id IN (${placeholders})`, [timetableId, ...actIds]);
+          }
         }
       }
     }
@@ -265,6 +276,13 @@ export function updateDatabaseWithTimetables(
         INSERT INTO timetable_entries (
           id, timetable_id, activity_id, day_of_week, period_index, duration, room_id, is_locked, satisfaction_explanation
         ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+        ON CONFLICT (id) DO UPDATE SET
+          activity_id = excluded.activity_id,
+          day_of_week = excluded.day_of_week,
+          period_index = excluded.period_index,
+          duration = excluded.duration,
+          room_id = excluded.room_id,
+          satisfaction_explanation = excluded.satisfaction_explanation
       `);
 
       for (let sIdx = 0; sIdx < tt.sessions.length; sIdx++) {
@@ -342,38 +360,42 @@ export function updateDatabaseWithTimetables(
         }
 
         // Create Activity
-        const actId = `act-${timetableId}-${secName.toLowerCase()}-${sIdx}-${Date.now()}`;
+        const sheetSlug = tt.sheetName.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const randomToken = Math.random().toString(36).slice(2, 8);
+        const actId = `act-${timetableId}-${sheetSlug}-${session.dayOfWeek}-${session.periodIndex}-${sIdx}-${randomToken}`;
         const actName = `${session.subjectName} (${secName})`;
 
         db.prepare(`
           INSERT INTO activities (
             id, code, name, course_id, activity_type, duration_periods, occurrences_per_week, required_room_type
           ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-        `).run(actId, `ACT-${session.subjectCode}-${sIdx}`, actName, courseId, session.activityType, session.duration, session.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM');
+          ON CONFLICT (id) DO UPDATE SET name = excluded.name
+        `).run(actId, `ACT-${session.subjectCode}-${sheetSlug}-${sIdx}`, actName, courseId, session.activityType, session.duration, session.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM');
 
         writeThroughPg(`
           INSERT INTO activities (
             id, code, name, course_id, activity_type, duration_periods, occurrences_per_week, required_room_type
           ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-        `, [actId, `ACT-${session.subjectCode}-${sIdx}`, actName, courseId, session.activityType, session.duration, session.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM']);
+          ON CONFLICT (id) DO UPDATE SET name = excluded.name
+        `, [actId, `ACT-${session.subjectCode}-${sheetSlug}-${sIdx}`, actName, courseId, session.activityType, session.duration, session.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM']);
 
         activitiesCount++;
 
         // Activity - Teacher assignments
         for (const tId of resolvedTeacherIds) {
           const ataId = `ata-${actId}-${tId}`;
-          db.prepare('INSERT INTO activity_teacher_assignments (id, activity_id, teacher_id) VALUES (?, ?, ?)').run(ataId, actId, tId);
-          writeThroughPg('INSERT INTO activity_teacher_assignments (id, activity_id, teacher_id) VALUES (?, ?, ?)', [ataId, actId, tId]);
+          db.prepare('INSERT INTO activity_teacher_assignments (id, activity_id, teacher_id) VALUES (?, ?, ?) ON CONFLICT (id) DO NOTHING').run(ataId, actId, tId);
+          writeThroughPg('INSERT INTO activity_teacher_assignments (id, activity_id, teacher_id) VALUES (?, ?, ?) ON CONFLICT (id) DO NOTHING', [ataId, actId, tId]);
         }
 
         // Activity - Student assignments
         const sId = existingSections.get(secName) || sectionId;
         const asaId = `asa-${actId}-${sId}`;
-        db.prepare('INSERT INTO activity_student_assignments (id, activity_id, section_id) VALUES (?, ?, ?)').run(asaId, actId, sId);
-        writeThroughPg('INSERT INTO activity_student_assignments (id, activity_id, section_id) VALUES (?, ?, ?)', [asaId, actId, sId]);
+        db.prepare('INSERT INTO activity_student_assignments (id, activity_id, section_id) VALUES (?, ?, ?) ON CONFLICT (id) DO NOTHING').run(asaId, actId, sId);
+        writeThroughPg('INSERT INTO activity_student_assignments (id, activity_id, section_id) VALUES (?, ?, ?) ON CONFLICT (id) DO NOTHING', [asaId, actId, sId]);
 
         // Timetable Entry
-        const entryId = `ent-${timetableId}-${secName.toLowerCase()}-${session.dayOfWeek}-${session.periodIndex}-${sIdx}`;
+        const entryId = `ent-${timetableId}-${sheetSlug}-${session.dayOfWeek}-${session.periodIndex}-${sIdx}-${randomToken}`;
         const explanation = `Scheduled session for ${secName}: ${session.subjectName} with ${session.teacherNames.join(', ')} in ${session.roomCode}`;
 
         insertEntryStmt.run(
@@ -391,6 +413,13 @@ export function updateDatabaseWithTimetables(
           INSERT INTO timetable_entries (
             id, timetable_id, activity_id, day_of_week, period_index, duration, room_id, is_locked, satisfaction_explanation
           ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+          ON CONFLICT (id) DO UPDATE SET
+            activity_id = excluded.activity_id,
+            day_of_week = excluded.day_of_week,
+            period_index = excluded.period_index,
+            duration = excluded.duration,
+            room_id = excluded.room_id,
+            satisfaction_explanation = excluded.satisfaction_explanation
         `, [entryId, timetableId, actId, session.dayOfWeek, session.periodIndex, session.duration, roomId, explanation]);
 
         entriesCount++;

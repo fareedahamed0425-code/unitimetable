@@ -1635,7 +1635,8 @@ apiRouter.post('/timetables/upload-extract', async (req: Request, res: Response)
       const ingestionResult = await processTimetableWorkbook(fileBase64, {
         persist: true,
         timetableId,
-        targetSection: targetSection && targetSection !== 'ALL' ? targetSection : undefined
+        targetSection: targetSection && targetSection !== 'ALL' ? targetSection : undefined,
+        clearExisting: clearExisting !== false
       });
 
       if (!ingestionResult.success && ingestionResult.validationReport.errors.length > 0) {
