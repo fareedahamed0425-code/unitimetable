@@ -429,7 +429,7 @@ export const AcademicSettingsView: React.FC = () => {
 
   // Filtered Slots (by selected year, day filter, and search term)
   const filteredSlots = slots.filter(s => {
-    if (selectedDayFilter !== 'ALL' && s.day !== selectedDayFilter) return false;
+    if (typeof selectedDayFilter === 'number' && s.day !== selectedDayFilter) return false;
     if (!slotSearch) return true;
     const term = slotSearch.toLowerCase();
     return s.dayName?.toLowerCase().includes(term) ||

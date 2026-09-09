@@ -411,6 +411,7 @@ export const api = {
     data?: {
       extractedSessionsCount: number;
       insertedEntriesCount: number;
+      timeSlotsUpserted?: number;
       conflictsCount: number;
       qualityScore: QualityScore;
       validationReport?: any;
