@@ -683,15 +683,18 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
       });
 
       if (res.success && res.data) {
+        const slotsMsg = res.data.timeSlotsUpserted
+          ? ` Period timings synced: ${res.data.timeSlotsUpserted} time slots updated in Academic Settings.`
+          : '';
         setUploadSuccessMsg(
-          `Successfully extracted and scheduled ${res.data.insertedEntriesCount} class sessions across the university grid!`
+          `Successfully extracted and scheduled ${res.data.insertedEntriesCount} class sessions across the university grid!${slotsMsg}`
         );
         setTimeout(async () => {
           setIsUploadModalOpen(false);
           await loadHierarchySections();
           await loadActivitiesAndCourses();
           onRefresh();
-        }, 1200);
+        }, 1800);
       } else {
         setUploadErrorMsg(res.error || 'Failed to extract and update timetable.');
       }

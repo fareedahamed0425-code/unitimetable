@@ -1,5 +1,5 @@
 import { pgQuery, pgExecute, pgTransaction } from '../db/database';
-import { ParsedTimetableEntity } from './types';
+import { ParsedTimetableEntity, TimePeriodSlot } from './types';
 
 export interface DatabaseUpdateResult {
   sections: number;
@@ -8,6 +8,66 @@ export interface DatabaseUpdateResult {
   rooms: number;
   activities: number;
   timetableEntries: number;
+  timeSlotsUpserted?: number;
+}
+
+/**
+ * Syncs extracted period slots from an uploaded timetable into the time_slots table.
+ * This ensures Academic Settings and the timetable grid both reflect the same timings.
+ */
+async function syncTimeSlotsFromParsed(
+  client: any,
+  timetables: ParsedTimetableEntity[]
+): Promise<number> {
+  const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  let upsertCount = 0;
+
+  for (const tt of timetables) {
+    const yearNum = tt.metadata.resolvedYearNumber || 1;
+
+    // Collect unique periods from the parsed sheet (colIndex 0 = Day label column, skip)
+    // periods contains the header-row period slots with their extracted times
+    const periods: TimePeriodSlot[] = tt.periods || [];
+    if (!periods.length) continue;
+
+    // We sync the same period structure across all 6 weekdays for this year
+    for (let d = 0; d < 6; d++) {
+      for (const slot of periods) {
+        const slotId = `ts-y${yearNum}-d${d}-p${slot.periodNumber}`;
+        const isBreakOrLunch = slot.isBreak || slot.isLunch;
+        const isBreakInt = isBreakOrLunch ? 1 : 0;
+        const label = slot.isBreak
+          ? 'Break'
+          : slot.isLunch
+            ? 'Lunch Break'
+            : slot.periodLabel || `Period ${slot.periodNumber}`;
+
+        await client.query(
+          `INSERT INTO time_slots (id, day_of_week, day_name, period_index, start_time, end_time, is_break, label, year_number)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (id) DO UPDATE SET
+             start_time = EXCLUDED.start_time,
+             end_time   = EXCLUDED.end_time,
+             is_break   = EXCLUDED.is_break,
+             label      = EXCLUDED.label`,
+          [
+            slotId,
+            d,
+            dayNames[d],
+            slot.periodNumber,
+            slot.startTime,
+            slot.endTime,
+            isBreakInt,
+            label,
+            yearNum
+          ]
+        );
+        upsertCount++;
+      }
+    }
+  }
+
+  return upsertCount;
 }
 
 /**
@@ -306,13 +366,18 @@ export async function updateDatabaseWithTimetables(
       }
     }
 
+    // ✅ Sync extracted period timings → time_slots (so Settings panel & grid both match the upload)
+    const timeSlotsUpserted = await syncTimeSlotsFromParsed(client, timetables);
+
     return {
       sections: sectionsCount,
       courses: coursesCount,
       teachers: teachersCount,
       rooms: roomsCount,
       activities: activitiesCount,
-      timetableEntries: entriesCount
+      timetableEntries: entriesCount,
+      timeSlotsUpserted
     };
   });
 }
+

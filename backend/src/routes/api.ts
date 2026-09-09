@@ -1577,6 +1577,7 @@ apiRouter.post('/timetables/upload-extract', async (req: Request, res: Response)
         data: {
           extractedSessionsCount: ingestionResult.validationReport.totalSessionsExtracted,
           insertedEntriesCount: ingestionResult.insertedCounts?.timetableEntries || allSessions.length,
+          timeSlotsUpserted: ingestionResult.insertedCounts?.timeSlotsUpserted || 0,
           conflictsCount: 0,
           qualityScore,
           validationReport: ingestionResult.validationReport,

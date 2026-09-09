@@ -213,12 +213,14 @@ export const App: React.FC = () => {
   };
 
   const handleRefreshData = async () => {
-    const [tt, stats] = await Promise.all([
+    const [tt, stats, cal] = await Promise.all([
       api.getActiveTimetable(),
-      api.getAnalytics()
+      api.getAnalytics(),
+      api.getCalendar().catch(() => [])
     ]);
     setActiveTimetable(tt);
     setAnalytics(stats);
+    if (cal && cal.length > 0) setCalendar(cal);
   };
 
   const handleSelectUser = (user: User) => {

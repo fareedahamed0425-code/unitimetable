@@ -125,6 +125,7 @@ export interface IngestionResult {
     rooms: number;
     activities: number;
     timetableEntries: number;
+    timeSlotsUpserted?: number;
   };
   error?: string;
 }
