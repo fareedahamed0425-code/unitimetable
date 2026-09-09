@@ -20,6 +20,7 @@ import { FETInteroperabilityView } from './components/fet/FETInteroperabilityVie
 import { PublishingAndAuditView } from './components/governance/PublishingAndAuditView';
 import { RoleProfileRouter } from './components/roles/RoleProfileRouter';
 import { AuthPage } from './components/auth/AuthPage';
+import { NotFoundPage } from './components/common/NotFoundPage';
 import { api } from './api';
 import { RoleType, Room, Teacher, TimeSlot, Timetable, User } from '../../shared/types';
 import { ROLE_CONFIGS } from './config/roleProfiles';
@@ -50,25 +51,22 @@ const useNativeRouter = () => {
   return { pathname, navigate };
 };
 
+// Only Admin and Faculty active roles
 export const ROLE_TO_SLUG: Record<RoleType, string> = {
   SUPER_ADMIN: 'admin',
-  UNIVERSITY_ADMIN: 'dean',
-  DEPARTMENT_ADMIN: 'hod',
-  TIMETABLE_COORDINATOR: 'coordinator',
   FACULTY: 'faculty',
-  STUDENT: 'student'
+  UNIVERSITY_ADMIN: 'admin',
+  DEPARTMENT_ADMIN: 'admin',
+  TIMETABLE_COORDINATOR: 'admin',
+  STUDENT: 'faculty'
 };
+
+export const ALLOWED_ROLE_SLUGS = new Set(['admin', 'super-admin', 'faculty']);
 
 export const SLUG_TO_ROLE: Record<string, RoleType> = {
   admin: 'SUPER_ADMIN',
   'super-admin': 'SUPER_ADMIN',
-  dean: 'UNIVERSITY_ADMIN',
-  'univ-admin': 'UNIVERSITY_ADMIN',
-  hod: 'DEPARTMENT_ADMIN',
-  'dept-admin': 'DEPARTMENT_ADMIN',
-  coordinator: 'TIMETABLE_COORDINATOR',
-  faculty: 'FACULTY',
-  student: 'STUDENT'
+  faculty: 'FACULTY'
 };
 
 export const SECTION_TO_SLUG: Record<NavSection, string> = {
@@ -132,6 +130,7 @@ export const App: React.FC = () => {
   const [currentSection, setCurrentSection] = useState<NavSection>('role-profile');
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [isRouteNotFound, setIsRouteNotFound] = useState<boolean>(false);
 
   // Core Data
   const [users, setUsers] = useState<User[]>([]);
@@ -186,7 +185,8 @@ export const App: React.FC = () => {
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
     setIsAuthenticated(true);
-    const roleSlug = ROLE_TO_SLUG[user.role] || 'admin';
+    setIsRouteNotFound(false);
+    const roleSlug = user.role === 'SUPER_ADMIN' ? 'admin' : 'faculty';
     const roleConfig = ROLE_CONFIGS[user.role] || ROLE_CONFIGS.SUPER_ADMIN;
     const defaultSec = (roleConfig.defaultSection as NavSection) || 'role-profile';
     setCurrentSection(defaultSec);
@@ -198,19 +198,21 @@ export const App: React.FC = () => {
     api.logout();
     setIsAuthenticated(false);
     setCurrentUser(null);
+    setIsRouteNotFound(false);
     navigate('/');
   };
 
-  // Sync state with URL path
+  // Sync state with URL path & Freeze legacy or invalid routes
   useEffect(() => {
     if (!isAuthenticated) return;
 
     const path = pathname.replace(/^\/+|\/+$/g, '');
     const parts = path.split('/').filter(Boolean);
 
+    // Root path -> redirect to active role profile
     if (parts.length === 0) {
-      const activeRole = currentUser?.role || 'SUPER_ADMIN';
-      const roleSlug = ROLE_TO_SLUG[activeRole] || 'admin';
+      setIsRouteNotFound(false);
+      const roleSlug = currentUser?.role === 'SUPER_ADMIN' ? 'admin' : 'faculty';
       navigate(`/${roleSlug}/profile`, { replace: true });
       return;
     }
@@ -218,8 +220,17 @@ export const App: React.FC = () => {
     const first = parts[0].toLowerCase();
     const second = parts[1] ? parts[1].toLowerCase() : null;
 
-    if (SLUG_TO_ROLE[first]) {
-      const targetRole = SLUG_TO_ROLE[first];
+    // Check if route is a frozen legacy role or invalid path
+    const frozenSlugs = ['student', 'dean', 'hod', 'coordinator', 'univ-admin', 'dept-admin'];
+    if (frozenSlugs.includes(first) || (!ALLOWED_ROLE_SLUGS.has(first) && !SLUG_TO_SECTION[first])) {
+      setIsRouteNotFound(true);
+      return;
+    }
+
+    setIsRouteNotFound(false);
+
+    if (ALLOWED_ROLE_SLUGS.has(first)) {
+      const targetRole = SLUG_TO_ROLE[first] || 'FACULTY';
       const matchedUser = users.find(u => u.role === targetRole);
       if (matchedUser && (!currentUser || currentUser.role !== matchedUser.role)) {
         setCurrentUser(matchedUser);
@@ -239,15 +250,15 @@ export const App: React.FC = () => {
       const targetSection = SLUG_TO_SECTION[first];
       setCurrentSection(targetSection);
       setIsWizardOpen(targetSection === 'wizard');
-      const activeRole = currentUser?.role || 'SUPER_ADMIN';
-      const roleSlug = ROLE_TO_SLUG[activeRole] || 'admin';
+      const roleSlug = currentUser?.role === 'SUPER_ADMIN' ? 'admin' : 'faculty';
       navigate(`/${roleSlug}/${SECTION_TO_SLUG[targetSection] || targetSection}`, { replace: true });
     }
-  }, [pathname, users, isAuthenticated]);
+  }, [pathname, users, isAuthenticated, currentUser]);
 
   const handleNavigate = (section: NavSection, userOverride?: User | null) => {
+    setIsRouteNotFound(false);
     const targetUser = userOverride || currentUser;
-    const roleSlug = targetUser ? ROLE_TO_SLUG[targetUser.role] || 'admin' : 'admin';
+    const roleSlug = targetUser?.role === 'SUPER_ADMIN' ? 'admin' : 'faculty';
     const sectionSlug = SECTION_TO_SLUG[section] || 'profile';
     setCurrentSection(section);
     setIsWizardOpen(section === 'wizard');
@@ -275,6 +286,21 @@ export const App: React.FC = () => {
 
   if (!isAuthenticated) {
     return <AuthPage onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  // 404 / Access Restricted View for frozen or invalid URLs
+  if (isRouteNotFound) {
+    return (
+      <NotFoundPage
+        onGoHome={() => {
+          setIsRouteNotFound(false);
+          const roleSlug = currentUser?.role === 'SUPER_ADMIN' ? 'admin' : 'faculty';
+          navigate(`/${roleSlug}/profile`);
+        }}
+        onLogout={handleLogout}
+        attemptedPath={pathname}
+      />
+    );
   }
 
   return (

@@ -227,27 +227,29 @@ export const Navbar: React.FC<NavbarProps> = ({
                 Switch Role Profile
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {allUsers.map(user => {
-                  const uInfo = formatUser(user);
-                  const isSelected = user.id === currentUser?.id;
-                  return (
-                    <button
-                      key={user.id}
-                      onClick={() => {
-                        onSelectUser(user);
-                        setIsProfileModalOpen(false);
-                      }}
-                      className={`p-2.5 rounded-xl border text-left transition-all ${
-                        isSelected
-                          ? 'border-[#2582A1] bg-[#E8F4F8] shadow-xs'
-                          : 'border-[#D8E6ED] bg-white hover:border-[#B8D4E1] hover:bg-[#F4F8FA]'
-                      }`}
-                    >
-                      <div className="text-xs font-bold text-[#002E4E] truncate">{uInfo.name}</div>
-                      <div className="text-[10px] text-[#2582A1] font-medium">{uInfo.role}</div>
-                    </button>
-                  );
-                })}
+                {allUsers
+                  .filter(u => u.role === 'SUPER_ADMIN' || u.role === 'FACULTY')
+                  .map(user => {
+                    const uInfo = formatUser(user);
+                    const isSelected = user.id === currentUser?.id;
+                    return (
+                      <button
+                        key={user.id}
+                        onClick={() => {
+                          onSelectUser(user);
+                          setIsProfileModalOpen(false);
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          isSelected
+                            ? 'border-[#2582A1] bg-[#E8F4F8] shadow-xs'
+                            : 'border-[#D8E6ED] bg-white hover:border-[#B8D4E1] hover:bg-[#F4F8FA]'
+                        }`}
+                      >
+                        <div className="text-xs font-bold text-[#002E4E] truncate">{uInfo.name}</div>
+                        <div className="text-[10px] text-[#2582A1] font-medium">{uInfo.role}</div>
+                      </button>
+                    );
+                  })}
               </div>
             </div>
 

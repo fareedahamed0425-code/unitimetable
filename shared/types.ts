@@ -124,6 +124,8 @@ export interface Teacher {
   email: string;
   phone?: string;
   departmentId: string;
+  departmentName?: string;
+  departmentCode?: string;
   designation: string; // Professor, Assoc Prof, Asst Prof, Lecturer
   maxHoursPerDay: number;
   maxHoursPerWeek: number;
@@ -389,6 +391,8 @@ export interface TimetableEntry {
   roomName: string;
   buildingName: string;
   isLocked: boolean;
+  isCombined?: boolean;
+  combinedSectionNames?: string[];
   satisfactionExplanation?: string;
   violatedSoftPreferences?: string[];
 }

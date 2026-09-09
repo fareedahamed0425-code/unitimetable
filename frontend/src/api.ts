@@ -275,6 +275,9 @@ export const api = {
     duration?: number;
     roomId: string;
     isLocked?: boolean;
+    teacherIds?: string[];
+    sectionIds?: string[];
+    isCombined?: boolean;
   }): Promise<{ entryId: string }> {
     const res = await fetch(url('timetables/entries'), {
       method: 'POST',

@@ -481,10 +481,15 @@ apiRouter.get('/hierarchy', (req: Request, res: Response) => {
 });
 
 // ----------------------------------------------------
-// 3. TEACHERS & FACULTY
+// 3. TEACHERS & FACULTY (Cross-Department Support)
 // ----------------------------------------------------
 apiRouter.get('/teachers', (req: Request, res: Response) => {
-  const teachers = db.prepare('SELECT * FROM teachers ORDER BY name ASC').all() as any[];
+  const teachers = db.prepare(`
+    SELECT t.*, d.name as department_name, d.code as department_code 
+    FROM teachers t 
+    LEFT JOIN departments d ON t.department_id = d.id 
+    ORDER BY t.name ASC
+  `).all() as any[];
   const qualifications = db.prepare('SELECT * FROM teacher_qualifications').all() as any[];
 
   const fullTeachers: Teacher[] = teachers.map(t => ({
@@ -494,6 +499,8 @@ apiRouter.get('/teachers', (req: Request, res: Response) => {
     email: t.email,
     phone: t.phone,
     departmentId: t.department_id,
+    departmentName: t.department_name || 'Academic Faculty',
+    departmentCode: t.department_code || 'GEN',
     designation: t.designation,
     maxHoursPerDay: t.max_hours_per_day,
     maxHoursPerWeek: t.max_hours_per_week,
@@ -871,6 +878,12 @@ apiRouter.get('/timetables/active', (req: Request, res: Response) => {
     const bld = rm ? bldMap.get(rm.buildingId) : undefined;
     const teachers = act ? act.teacherIds.map(tId => context.teachers.get(tId)?.name || tId) : [];
 
+    const isCombined = Boolean(
+      (act && act.sectionIds.length > 1) || 
+      (act && act.teacherIds.length > 1) || 
+      (act && act.name?.toLowerCase().includes('combined'))
+    );
+
     return {
       id: e.id,
       timetableId: e.timetable_id,
@@ -891,6 +904,8 @@ apiRouter.get('/timetables/active', (req: Request, res: Response) => {
       roomName: rm?.name || e.room_id,
       buildingName: bld?.name || 'Building',
       isLocked: Boolean(e.is_locked),
+      isCombined,
+      combinedSectionNames: act?.sectionIds || [],
       satisfactionExplanation: e.satisfaction_explanation
     };
   });
@@ -1120,11 +1135,16 @@ apiRouter.delete('/timetables/:id', (req: Request, res: Response) => {
   res.json({ success: true, message: 'Timetable deleted successfully' });
 });
 
-// Add a manual Class / Session entry to a timetable
+// Add a manual Class / Session entry to a timetable (with Combined Classes & Cross-Dept Faculty)
 apiRouter.post('/timetables/entries', (req: Request, res: Response) => {
   const {
     timetableId = 'tt-active',
     activityId,
+    activityName,
+    courseId,
+    teacherIds = [],
+    sectionIds = [],
+    isCombined = false,
     dayOfWeek,
     periodIndex,
     duration = 1,
@@ -1132,19 +1152,61 @@ apiRouter.post('/timetables/entries', (req: Request, res: Response) => {
     isLocked = false
   } = req.body;
 
-  if (!activityId || dayOfWeek === undefined || periodIndex === undefined || !roomId) {
-    return res.status(400).json({ success: false, error: 'Missing required session parameters (activity, day, period, room)' });
+  if (dayOfWeek === undefined || periodIndex === undefined || !roomId) {
+    return res.status(400).json({ success: false, error: 'Missing required session parameters (day, period, room)' });
   }
 
   const entryId = `ent-${timetableId}-${Date.now()}`;
 
   runInTransaction(() => {
+    let targetActivityId = activityId;
+
+    // If combined class or custom cross-department faculty provided, configure activity
+    if (isCombined || (teacherIds && teacherIds.length > 0) || (sectionIds && sectionIds.length > 0) || !targetActivityId) {
+      if (!targetActivityId) {
+        targetActivityId = `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const cId = courseId || (db.prepare('SELECT id FROM courses LIMIT 1').get() as any)?.id || 'crs-cs101';
+        const defaultName = isCombined ? `Combined Session (${sectionIds.join(' + ')})` : (activityName || 'Academic Lecture');
+        
+        db.prepare(`
+          INSERT INTO activities (id, code, name, course_id, activity_type, duration_periods, occurrences_per_week, total_student_count)
+          VALUES (?, ?, ?, ?, 'LECTURE', ?, 1, ?)
+        `).run(
+          targetActivityId,
+          `ACT-${Date.now().toString(36).toUpperCase()}`,
+          defaultName,
+          cId,
+          duration,
+          sectionIds.length > 1 ? sectionIds.length * 60 : 60
+        );
+      }
+
+      // Assign cross-department teachers
+      if (Array.isArray(teacherIds) && teacherIds.length > 0) {
+        db.prepare('DELETE FROM activity_teacher_assignments WHERE activity_id = ?').run(targetActivityId);
+        const insertTA = db.prepare('INSERT INTO activity_teacher_assignments (id, activity_id, teacher_id) VALUES (?, ?, ?)');
+        teacherIds.forEach((tId: string) => {
+          insertTA.run(`ata-${targetActivityId}-${tId}-${Date.now()}`, targetActivityId, tId);
+        });
+      }
+
+      // Assign combined student sections
+      if (Array.isArray(sectionIds) && sectionIds.length > 0) {
+        db.prepare('DELETE FROM activity_student_assignments WHERE activity_id = ?').run(targetActivityId);
+        const insertSA = db.prepare('INSERT INTO activity_student_assignments (id, activity_id, section_id) VALUES (?, ?, ?)');
+        sectionIds.forEach((sId: string) => {
+          insertSA.run(`asa-${targetActivityId}-${sId}-${Date.now()}`, targetActivityId, sId);
+        });
+      }
+    }
+
     db.prepare(`
       INSERT INTO timetable_entries (
         id, timetable_id, activity_id, day_of_week, period_index, duration, room_id, is_locked, satisfaction_explanation
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      entryId, timetableId, activityId, dayOfWeek, periodIndex, duration, roomId, isLocked ? 1 : 0, 'Manually scheduled by coordinator'
+      entryId, timetableId, targetActivityId, dayOfWeek, periodIndex, duration, roomId, isLocked ? 1 : 0, 
+      isCombined ? 'Manually scheduled combined class' : 'Manually scheduled session'
     );
 
     // Recompute score and conflicts

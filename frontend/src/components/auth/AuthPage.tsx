@@ -28,7 +28,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [role, setRole] = useState<RoleType>('STUDENT');
+  const [role, setRole] = useState<RoleType>('FACULTY');
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -278,20 +278,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLoginSuccess }) => {
 
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-[#002E4E]">
-                  University Role
+                  Account Role
                 </label>
-                <select
-                  value={role}
-                  onChange={e => setRole(e.target.value as RoleType)}
-                  className="w-full px-3 py-2 text-xs font-semibold rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] focus:border-[#2582A1] focus:bg-white focus:outline-none transition-all text-[#002E4E] cursor-pointer"
-                >
-                  <option value="STUDENT">Student (Class Routine & Enrolled Courses)</option>
-                  <option value="FACULTY">Faculty Member (Teaching Schedule & Availability)</option>
-                  <option value="TIMETABLE_COORDINATOR">Timetable Coordinator (AI Wizard & Scheduling)</option>
-                  <option value="DEPARTMENT_ADMIN">Head of Department (HOD CSE/ECE)</option>
-                  <option value="UNIVERSITY_ADMIN">Dean of Academic Affairs</option>
-                  <option value="SUPER_ADMIN">Super Administrator (Root Console)</option>
-                </select>
+                <div className="w-full px-3 py-2.5 rounded-xl bg-[#E8F4F8] border border-[#B8DCE8] flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-[#2582A1]" />
+                    <span className="font-bold text-[#002E4E]">Faculty Member</span>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white text-[#2582A1] border border-[#B8DCE8]">
+                    TEACHING DESK
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">

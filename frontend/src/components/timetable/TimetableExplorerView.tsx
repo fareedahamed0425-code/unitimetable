@@ -75,6 +75,10 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
   const [newSessionRoomId, setNewSessionRoomId] = useState<string>('');
   const [newSessionDuration, setNewSessionDuration] = useState<number>(1);
   const [newSessionLocked, setNewSessionLocked] = useState<boolean>(false);
+  const [newSessionTeacherIds, setNewSessionTeacherIds] = useState<string[]>([]);
+  const [isCombinedSession, setIsCombinedSession] = useState<boolean>(false);
+  const [newSessionSectionIds, setNewSessionSectionIds] = useState<string[]>([]);
+  const [teacherSearchQuery, setTeacherSearchQuery] = useState<string>('');
 
   // New Timetable Form
   const [newTimetableName, setNewTimetableName] = useState('Draft Timetable (Semester 3)');
@@ -94,6 +98,9 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
       if (sList.length > 0 && !selectedFilterId) {
         setSelectedFilterId(sList[0].id);
       }
+      if (sList.length > 0 && newSessionSectionIds.length === 0) {
+        setNewSessionSectionIds([sList[0].id]);
+      }
     } catch (e) {
       console.error('Failed to load sections for explorer:', e);
     }
@@ -108,7 +115,11 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
       setActivities(acts || []);
       setCourses(crs || []);
       if (acts && acts.length > 0) {
-        setNewSessionActivityId(acts[0].id);
+        const firstAct = acts[0];
+        setNewSessionActivityId(firstAct.id);
+        if (firstAct.teacherIds && firstAct.teacherIds.length > 0) {
+          setNewSessionTeacherIds(firstAct.teacherIds);
+        }
       }
       if (rooms && rooms.length > 0) {
         setNewSessionRoomId(rooms[0].id);
@@ -226,6 +237,16 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
       return;
     }
 
+    if (newSessionTeacherIds.length === 0) {
+      alert('Please select at least one faculty member (cross-department assignment is fully supported).');
+      return;
+    }
+
+    if (isCombinedSession && newSessionSectionIds.length < 2) {
+      alert('Combined classes require selecting at least 2 student cohorts/sections.');
+      return;
+    }
+
     try {
       await api.addTimetableEntry({
         timetableId: timetable?.id || 'tt-active',
@@ -234,7 +255,10 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
         periodIndex: newSessionPeriod,
         duration: newSessionDuration,
         roomId: newSessionRoomId,
-        isLocked: newSessionLocked
+        isLocked: newSessionLocked,
+        teacherIds: newSessionTeacherIds,
+        sectionIds: isCombinedSession ? newSessionSectionIds : (newSessionSectionIds.length > 0 ? [newSessionSectionIds[0]] : undefined),
+        isCombined: isCombinedSession
       });
 
       setIsAddSessionModalOpen(false);
@@ -553,45 +577,65 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
                           )}
 
                           <div className="space-y-1.5">
-                            {cellEntries.map(entry => (
-                              <div
-                                key={entry.id}
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  setSelectedEntry(entry);
-                                }}
-                                className={`p-2.5 rounded-lg border text-left transition-all relative group shadow-2xs ${
-                                  entry.activityType === 'LABORATORY'
-                                    ? 'bg-[#FAF5FF] border-[#E9D5FF] text-[#581C87]'
-                                    : entry.activityType === 'TUTORIAL'
-                                    ? 'bg-[#F0FDF4] border-[#BBF7D0] text-[#166534]'
-                                    : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#1E293B]'
-                                }`}
-                              >
-                                <div className="flex items-start justify-between gap-1">
-                                  <span className="font-bold text-xs truncate max-w-[120px]">
-                                    {entry.courseCode}
-                                  </span>
-                                  <div className="flex items-center gap-1">
-                                    {entry.isLocked && (
-                                      <Lock
-                                        onClick={e => handleToggleLock(entry.id, e)}
-                                        className="w-3 h-3 text-[#8B8E99] hover:text-[#121316] cursor-pointer"
-                                      />
-                                    )}
+                            {cellEntries.map(entry => {
+                              const isCombined = entry.isCombined || (entry.sectionNames && entry.sectionNames.length > 1);
+                              return (
+                                <div
+                                  key={entry.id}
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    setSelectedEntry(entry);
+                                  }}
+                                  className={`p-2.5 rounded-lg border text-left transition-all relative group shadow-2xs ${
+                                    isCombined
+                                      ? 'bg-amber-50/90 border-amber-300 text-amber-950'
+                                      : entry.activityType === 'LABORATORY'
+                                      ? 'bg-[#FAF5FF] border-[#E9D5FF] text-[#581C87]'
+                                      : entry.activityType === 'TUTORIAL'
+                                      ? 'bg-[#F0FDF4] border-[#BBF7D0] text-[#166534]'
+                                      : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#1E293B]'
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-1">
+                                    <span className="font-bold text-xs truncate max-w-[120px]">
+                                      {entry.courseCode}
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                      {isCombined && (
+                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 uppercase">
+                                          Combined
+                                        </span>
+                                      )}
+                                      {entry.isLocked && (
+                                        <Lock
+                                          onClick={e => handleToggleLock(entry.id, e)}
+                                          className="w-3 h-3 text-[#8B8E99] hover:text-[#121316] cursor-pointer"
+                                        />
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="text-[11px] font-medium truncate text-[#121316] mt-0.5">
+                                    {entry.activityName}
+                                  </div>
+
+                                  {isCombined && (
+                                    <div className="text-[10px] font-bold text-amber-800 truncate mt-0.5">
+                                      👥 {entry.sectionNames.join(' + ')}
+                                    </div>
+                                  )}
+
+                                  <div className="flex items-center justify-between text-[10px] text-[#575A65] mt-1.5 pt-1 border-t border-black/5">
+                                    <span className="truncate font-semibold">{entry.roomName}</span>
+                                    <span className="truncate" title={entry.teacherNames.join(', ')}>
+                                      {entry.teacherNames.length > 1
+                                        ? `${entry.teacherNames[0]} +${entry.teacherNames.length - 1}`
+                                        : entry.teacherNames[0] || 'Faculty'}
+                                    </span>
                                   </div>
                                 </div>
-
-                                <div className="text-[11px] font-medium truncate text-[#121316] mt-0.5">
-                                  {entry.activityName}
-                                </div>
-
-                                <div className="flex items-center justify-between text-[10px] text-[#575A65] mt-1.5 pt-1 border-t border-black/5">
-                                  <span className="truncate font-semibold">{entry.roomName}</span>
-                                  <span className="truncate">{entry.teacherNames[0] || 'Teacher'}</span>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </td>
                       );
@@ -605,125 +649,312 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
       </div>
 
       {/* 2. ADD CLASS / SESSION MODAL */}
-      {isAddSessionModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-2xl border border-[#E8E7E3] shadow-xl max-w-lg w-full p-6 space-y-4 animate-scaleUp">
-            <div className="flex items-center justify-between border-b border-[#E8E7E3] pb-3">
-              <div className="flex items-center gap-2">
-                <Plus className="w-4 h-4 text-purple-600" />
-                <h3 className="text-sm font-bold text-[#121316]">Schedule Class / Lecture Session</h3>
-              </div>
-              <button
-                onClick={() => setIsAddSessionModalOpen(false)}
-                className="p-1.5 rounded-lg text-[#8B8E99] hover:text-[#121316] hover:bg-[#F4F4F1]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      {isAddSessionModalOpen && (() => {
+        const selectedRoom = rooms.find(r => r.id === newSessionRoomId);
+        const selectedSections = sections.filter(s => newSessionSectionIds.includes(s.id));
+        const totalCombinedStudents = isCombinedSession
+          ? selectedSections.reduce((acc, s) => acc + (s.student_count || 60), 0)
+          : (selectedSections[0]?.student_count || 60);
+        const capacityExceeded = selectedRoom && totalCombinedStudents > selectedRoom.capacity;
 
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="text-[11px] font-bold text-[#575A65] uppercase">Select Course Activity / Lab</label>
-                <select
-                  value={newSessionActivityId}
-                  onChange={e => setNewSessionActivityId(e.target.value)}
-                  className="lux-select w-full mt-1 bg-[#F9F9F8] border-[#E8E7E3] text-xs"
+        const filteredTeachers = teachers.filter(t => {
+          if (!teacherSearchQuery.trim()) return true;
+          const q = teacherSearchQuery.toLowerCase();
+          return (
+            t.name.toLowerCase().includes(q) ||
+            t.email.toLowerCase().includes(q) ||
+            (t.departmentName && t.departmentName.toLowerCase().includes(q)) ||
+            (t.departmentCode && t.departmentCode.toLowerCase().includes(q)) ||
+            (t.designation && t.designation.toLowerCase().includes(q))
+          );
+        });
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+            <div className="bg-white rounded-2xl border border-[#D8E6ED] shadow-2xl max-w-xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto animate-scaleUp">
+              <div className="flex items-center justify-between border-b border-[#D8E6ED] pb-3">
+                <div className="flex items-center gap-2">
+                  <Plus className="w-4 h-4 text-[#2582A1]" />
+                  <div>
+                    <h3 className="text-sm font-bold text-[#002E4E]">Schedule Academic Session</h3>
+                    <p className="text-[11px] text-[#4A6375]">Cross-Department Faculty & Combined Classes Supported</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsAddSessionModalOpen(false)}
+                  className="p-1.5 rounded-lg text-[#4A6375] hover:text-[#002E4E] hover:bg-[#F4F8FA]"
                 >
-                  {activities.map(act => (
-                    <option key={act.id} value={act.id}>
-                      {act.name} ({act.activityType}, {act.durationPeriods} period)
-                    </option>
-                  ))}
-                </select>
+                  <X className="w-4 h-4" />
+                </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-4 text-xs">
+                {/* 1. Course Activity Selection */}
                 <div>
-                  <label className="text-[11px] font-bold text-[#575A65] uppercase">Day of Week</label>
+                  <label className="text-[11px] font-bold text-[#2582A1] uppercase tracking-wider">Select Course Activity / Lab</label>
                   <select
-                    value={newSessionDay}
-                    onChange={e => setNewSessionDay(Number(e.target.value))}
-                    className="lux-select w-full mt-1 bg-[#F9F9F8] border-[#E8E7E3] text-xs"
+                    value={newSessionActivityId}
+                    onChange={e => {
+                      const actId = e.target.value;
+                      setNewSessionActivityId(actId);
+                      const act = activities.find(a => a.id === actId);
+                      if (act && act.teacherIds && act.teacherIds.length > 0) {
+                        setNewSessionTeacherIds(act.teacherIds);
+                      }
+                    }}
+                    className="lux-select w-full mt-1 bg-[#F4F8FA] border-[#D8E6ED] text-xs font-semibold text-[#002E4E]"
                   >
-                    {days.map(d => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
+                    {activities.map(act => (
+                      <option key={act.id} value={act.id}>
+                        {act.name} ({act.activityType}, {act.durationPeriods} Period{act.durationPeriods > 1 ? 's' : ''})
+                      </option>
                     ))}
                   </select>
                 </div>
 
-                <div>
-                  <label className="text-[11px] font-bold text-[#575A65] uppercase">Starting Period</label>
-                  <select
-                    value={newSessionPeriod}
-                    onChange={e => setNewSessionPeriod(Number(e.target.value))}
-                    className="lux-select w-full mt-1 bg-[#F9F9F8] border-[#E8E7E3] text-xs"
-                  >
-                    {periods.filter(p => !p.isBreak).map(p => (
-                      <option key={p.index} value={p.index}>{p.time} ({p.label})</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+                {/* 2. Cross-Department Faculty Manual Assignment */}
+                <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#D8E6ED] space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="text-[11px] font-bold text-[#002E4E] uppercase tracking-wider flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-[#2582A1]" />
+                        Assign Faculty (Cross-Department Supported)
+                      </label>
+                      <p className="text-[10px] text-[#4A6375]">
+                        Select any faculty member from CSE, ECE, Mathematics, Humanities, etc. Multiple faculties enable co-teaching.
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#EBF4F7] text-[#002E4E] border border-[#D8E6ED]">
+                      {newSessionTeacherIds.length} Selected
+                    </span>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-bold text-[#575A65] uppercase">Venue / Classroom</label>
-                  <select
-                    value={newSessionRoomId}
-                    onChange={e => setNewSessionRoomId(e.target.value)}
-                    className="lux-select w-full mt-1 bg-[#F9F9F8] border-[#E8E7E3] text-xs"
-                  >
-                    {rooms.map(r => (
-                      <option key={r.id} value={r.id}>{r.name} ({r.roomType}, {r.capacity} seats)</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-bold text-[#575A65] uppercase">Duration (Periods)</label>
                   <input
-                    type="number"
-                    min={1}
-                    max={3}
-                    value={newSessionDuration}
-                    onChange={e => setNewSessionDuration(Number(e.target.value))}
-                    className="lux-input w-full mt-1 bg-[#F9F9F8] border-[#E8E7E3] text-xs"
+                    type="text"
+                    placeholder="Search by faculty name or department (e.g. CSE, ECE, MATH)..."
+                    value={teacherSearchQuery}
+                    onChange={e => setTeacherSearchQuery(e.target.value)}
+                    className="lux-input w-full bg-white border-[#D8E6ED] text-xs py-1.5 px-3"
                   />
+
+                  <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                    {filteredTeachers.map(t => {
+                      const isSelected = newSessionTeacherIds.includes(t.id);
+                      const deptBadge = t.departmentCode || (t.departmentName ? t.departmentName.substring(0, 4).toUpperCase() : 'DEPT');
+                      return (
+                        <div
+                          key={t.id}
+                          onClick={() => {
+                            if (isSelected) {
+                              setNewSessionTeacherIds(newSessionTeacherIds.filter(id => id !== t.id));
+                            } else {
+                              setNewSessionTeacherIds([...newSessionTeacherIds, t.id]);
+                            }
+                          }}
+                          className={`p-2 rounded-lg border text-xs cursor-pointer flex items-center justify-between transition-all ${
+                            isSelected
+                              ? 'bg-[#EBF4F7] border-[#2582A1] text-[#002E4E] font-semibold'
+                              : 'bg-white border-[#E2E8F0] text-[#4A6375] hover:bg-[#F8FAFC]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#002E4E] text-white uppercase">
+                              {deptBadge}
+                            </span>
+                            <span className="truncate">{t.name}</span>
+                            <span className="text-[10px] text-[#4A6375] truncate">({t.designation})</span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            readOnly
+                            className="rounded border-[#D8E6ED] text-[#2582A1]"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 3. Combined Classes / Merged Cohorts */}
+                <div className="p-3.5 rounded-xl bg-[#FFFDF5] border border-amber-200 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="combinedClassToggle"
+                        checked={isCombinedSession}
+                        onChange={e => setIsCombinedSession(e.target.checked)}
+                        className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer"
+                      />
+                      <label htmlFor="combinedClassToggle" className="text-[11px] font-bold text-amber-950 uppercase tracking-wider cursor-pointer">
+                        Merge Multiple Sections (Combined Class)
+                      </label>
+                    </div>
+                    {isCombinedSession && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                        {newSessionSectionIds.length} Cohorts Merged
+                      </span>
+                    )}
+                  </div>
+
+                  {isCombinedSession ? (
+                    <div className="space-y-2 pt-1">
+                      <p className="text-[10px] text-amber-800">
+                        Select 2 or more sections to hold a joint lecture or co-taught session:
+                      </p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-32 overflow-y-auto">
+                        {sections.map(sec => {
+                          const isSecSelected = newSessionSectionIds.includes(sec.id);
+                          return (
+                            <button
+                              key={sec.id}
+                              type="button"
+                              onClick={() => {
+                                if (isSecSelected) {
+                                  setNewSessionSectionIds(newSessionSectionIds.filter(id => id !== sec.id));
+                                } else {
+                                  setNewSessionSectionIds([...newSessionSectionIds, sec.id]);
+                                }
+                              }}
+                              className={`p-2 rounded-lg border text-[11px] text-left transition-all ${
+                                isSecSelected
+                                  ? 'bg-amber-100 border-amber-400 text-amber-950 font-bold'
+                                  : 'bg-white border-amber-200 text-[#4A6375] hover:bg-amber-50/50'
+                              }`}
+                            >
+                              <div className="truncate">{sec.name}</div>
+                              <div className="text-[10px] font-normal text-amber-800">
+                                {sec.student_count || 60} students
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Headcount vs Room Capacity */}
+                      <div className={`p-2.5 rounded-lg border text-[11px] font-medium flex items-center justify-between ${
+                        capacityExceeded
+                          ? 'bg-red-50 border-red-200 text-red-700'
+                          : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      }`}>
+                        <span>
+                          {capacityExceeded ? '⚠️ Capacity Exceeded:' : '✓ Capacity OK:'} {totalCombinedStudents} Total Students
+                        </span>
+                        <span>
+                          Room Capacity: {selectedRoom ? `${selectedRoom.capacity} seats` : 'Select room'}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="text-[10px] font-semibold text-[#4A6375]">Single Cohort / Section</label>
+                      <select
+                        value={newSessionSectionIds[0] || ''}
+                        onChange={e => setNewSessionSectionIds([e.target.value])}
+                        className="lux-select w-full mt-1 bg-white border-[#D8E6ED] text-xs text-[#002E4E]"
+                      >
+                        {sections.map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} ({s.student_count || 60} students)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Day & Time Slot */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-[#2582A1] uppercase tracking-wider">Day of Week</label>
+                    <select
+                      value={newSessionDay}
+                      onChange={e => setNewSessionDay(Number(e.target.value))}
+                      className="lux-select w-full mt-1 bg-[#F4F8FA] border-[#D8E6ED] text-xs text-[#002E4E]"
+                    >
+                      {days.map(d => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-[#2582A1] uppercase tracking-wider">Starting Period</label>
+                    <select
+                      value={newSessionPeriod}
+                      onChange={e => setNewSessionPeriod(Number(e.target.value))}
+                      className="lux-select w-full mt-1 bg-[#F4F8FA] border-[#D8E6ED] text-xs text-[#002E4E]"
+                    >
+                      {periods.filter(p => !p.isBreak).map(p => (
+                        <option key={p.index} value={p.index}>{p.time} ({p.label})</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* 5. Venue & Duration */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-[#2582A1] uppercase tracking-wider">Venue / Classroom</label>
+                    <select
+                      value={newSessionRoomId}
+                      onChange={e => setNewSessionRoomId(e.target.value)}
+                      className="lux-select w-full mt-1 bg-[#F4F8FA] border-[#D8E6ED] text-xs text-[#002E4E]"
+                    >
+                      {rooms.map(r => (
+                        <option key={r.id} value={r.id}>{r.name} ({r.roomType}, {r.capacity} seats)</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-[#2582A1] uppercase tracking-wider">Duration (Periods)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={3}
+                      value={newSessionDuration}
+                      onChange={e => setNewSessionDuration(Number(e.target.value))}
+                      className="lux-input w-full mt-1 bg-[#F4F8FA] border-[#D8E6ED] text-xs text-[#002E4E]"
+                    />
+                  </div>
+                </div>
+
+                {/* 6. Lock slot */}
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="lockCheckbox"
+                    checked={newSessionLocked}
+                    onChange={e => setNewSessionLocked(e.target.checked)}
+                    className="rounded border-[#D8E6ED] text-[#2582A1]"
+                  />
+                  <label htmlFor="lockCheckbox" className="text-xs text-[#4A6375] font-medium cursor-pointer">
+                    Lock slot (prevents automatic AI re-shuffling)
+                  </label>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="lockCheckbox"
-                  checked={newSessionLocked}
-                  onChange={e => setNewSessionLocked(e.target.checked)}
-                  className="rounded border-[#E8E7E3]"
-                />
-                <label htmlFor="lockCheckbox" className="text-xs text-[#575A65] font-medium cursor-pointer">
-                  Lock slot (prevents automatic AI re-shuffling)
-                </label>
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#D8E6ED]">
+                <button
+                  onClick={() => setIsAddSessionModalOpen(false)}
+                  className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#F4F8FA] text-[#4A6375] hover:bg-[#D8E6ED]"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddSession}
+                  className="lux-btn lux-btn-gold px-4 py-2 rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Save to Timetable</span>
+                </button>
               </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E8E7E3]">
-              <button
-                onClick={() => setIsAddSessionModalOpen(false)}
-                className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#F4F4F1] text-[#575A65] hover:bg-[#E8E7E3]"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddSession}
-                className="px-4 py-2 rounded-lg text-xs font-semibold bg-[#121316] text-white hover:bg-black shadow-xs flex items-center gap-1.5"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Save to Timetable</span>
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* 3. MANAGE TIMETABLES & VERSIONS MODAL */}
       {isManageTimetablesModalOpen && (
@@ -867,81 +1098,103 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
       )}
 
       {/* 5. SELECTED SESSION INSPECTOR DRAWER */}
-      {selectedEntry && (
-        <div className="fixed inset-y-0 right-0 z-50 w-80 bg-white border-l border-[#E8E7E3] shadow-2xl p-6 flex flex-col justify-between animate-slideInRight">
-          <div className="space-y-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded bg-purple-100 text-purple-800">
-                  {selectedEntry.activityType}
-                </span>
-                <h3 className="text-base font-bold text-[#121316] mt-2">{selectedEntry.courseCode}</h3>
-                <p className="text-xs text-[#8B8E99]">{selectedEntry.courseName}</p>
-              </div>
-              <button
-                onClick={() => setSelectedEntry(null)}
-                className="p-1.5 rounded-lg text-[#8B8E99] hover:text-[#121316] hover:bg-[#F4F4F1]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs border-t border-[#E8E7E3] pt-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[#8B8E99]">Day & Time:</span>
-                <span className="font-semibold text-[#121316]">
-                  {days.find(d => d.id === selectedEntry.dayOfWeek)?.name} • Period {selectedEntry.periodIndex + 1}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-[#8B8E99]">Venue / Room:</span>
-                <span className="font-semibold text-[#121316]">{selectedEntry.roomName} ({selectedEntry.buildingName})</span>
+      {selectedEntry && (() => {
+        const isCombined = selectedEntry.isCombined || (selectedEntry.sectionNames && selectedEntry.sectionNames.length > 1);
+        return (
+          <div className="fixed inset-y-0 right-0 z-50 w-80 bg-white border-l border-[#D8E6ED] shadow-2xl p-6 flex flex-col justify-between animate-slideInRight">
+            <div className="space-y-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded bg-[#EBF4F7] text-[#002E4E] border border-[#D8E6ED]">
+                      {selectedEntry.activityType}
+                    </span>
+                    {isCombined && (
+                      <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                        Combined Class
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-base font-bold text-[#002E4E] mt-2">{selectedEntry.courseCode}</h3>
+                  <p className="text-xs text-[#4A6375]">{selectedEntry.courseName}</p>
+                </div>
+                <button
+                  onClick={() => setSelectedEntry(null)}
+                  className="p-1.5 rounded-lg text-[#4A6375] hover:text-[#002E4E] hover:bg-[#F4F8FA]"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
 
-              <div className="flex items-center justify-between">
-                <span className="text-[#8B8E99]">Instructor:</span>
-                <span className="font-semibold text-[#121316]">{selectedEntry.teacherNames.join(', ') || 'N/A'}</span>
-              </div>
+              <div className="space-y-3 text-xs border-t border-[#D8E6ED] pt-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[#4A6375]">Day & Time:</span>
+                  <span className="font-semibold text-[#002E4E]">
+                    {days.find(d => d.id === selectedEntry.dayOfWeek)?.name} • Period {selectedEntry.periodIndex + 1}
+                  </span>
+                </div>
 
-              <div className="flex items-center justify-between">
-                <span className="text-[#8B8E99]">Target Cohort:</span>
-                <span className="font-semibold text-[#121316]">{selectedEntry.sectionNames.join(', ') || 'All Students'}</span>
-              </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[#4A6375]">Venue / Room:</span>
+                  <span className="font-semibold text-[#002E4E]">{selectedEntry.roomName} ({selectedEntry.buildingName})</span>
+                </div>
 
-              {selectedEntry.satisfactionExplanation && (
-                <div className="p-3 rounded-xl bg-[#F9F9F8] border border-[#E8E7E3] space-y-1">
-                  <div className="text-[10px] uppercase font-bold text-[#8B8E99]">Solver Placement Explanation</div>
-                  <div className="text-[11px] text-[#575A65] leading-relaxed">
-                    {selectedEntry.satisfactionExplanation}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[#4A6375]">Instructors / Faculty:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedEntry.teacherNames.map((name, idx) => (
+                      <span key={idx} className="px-2 py-0.5 rounded bg-[#F4F8FA] border border-[#D8E6ED] text-[11px] font-semibold text-[#002E4E]">
+                        👨‍🏫 {name}
+                      </span>
+                    ))}
                   </div>
                 </div>
-              )}
+
+                <div className="flex flex-col gap-1">
+                  <span className="text-[#4A6375]">Enrolled Cohorts / Sections:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedEntry.sectionNames.map((secName, idx) => (
+                      <span key={idx} className="px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-[11px] font-bold text-amber-900">
+                        👥 {secName}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {selectedEntry.satisfactionExplanation && (
+                  <div className="p-3 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] space-y-1">
+                    <div className="text-[10px] uppercase font-bold text-[#2582A1]">Solver Placement Explanation</div>
+                    <div className="text-[11px] text-[#002E4E] leading-relaxed">
+                      {selectedEntry.satisfactionExplanation}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-4 border-t border-[#D8E6ED]">
+              <button
+                onClick={() => {
+                  setMovingEntry(selectedEntry);
+                  setSelectedEntry(null);
+                }}
+                className="w-full py-2 rounded-xl bg-[#F4F8FA] text-[#002E4E] text-xs font-semibold hover:bg-[#D8E6ED] flex items-center justify-center gap-2 transition-colors"
+              >
+                <Move className="w-3.5 h-3.5" />
+                <span>Relocate / Move Session</span>
+              </button>
+
+              <button
+                onClick={() => handleDeleteEntry(selectedEntry.id)}
+                className="w-full py-2 rounded-xl bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100 flex items-center justify-center gap-2 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Session</span>
+              </button>
             </div>
           </div>
-
-          <div className="space-y-2 pt-4 border-t border-[#E8E7E3]">
-            <button
-              onClick={() => {
-                setMovingEntry(selectedEntry);
-                setSelectedEntry(null);
-              }}
-              className="w-full py-2.5 rounded-xl bg-[#F4F4F1] text-[#121316] text-xs font-semibold hover:bg-[#E8E7E3] flex items-center justify-center gap-2"
-            >
-              <Move className="w-3.5 h-3.5" />
-              <span>Relocate / Move Session</span>
-            </button>
-
-            <button
-              onClick={() => handleDeleteEntry(selectedEntry.id)}
-              className="w-full py-2.5 rounded-xl bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100 flex items-center justify-center gap-2"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Delete Session</span>
-            </button>
-          </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
