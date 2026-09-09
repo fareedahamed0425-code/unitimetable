@@ -775,6 +775,241 @@ apiRouter.post('/timetables/move-entry', (req: Request, res: Response) => {
   });
 });
 
+// List all saved timetables
+apiRouter.get('/timetables', (req: Request, res: Response) => {
+  const tts = db.prepare('SELECT * FROM timetables ORDER BY updated_at DESC').all() as any[];
+  const data = tts.map(tt => {
+    const entryCount = db.prepare('SELECT COUNT(*) as cnt FROM timetable_entries WHERE timetable_id = ?').get(tt.id) as any;
+    const conflictCount = db.prepare('SELECT COUNT(*) as cnt FROM conflicts WHERE timetable_id = ?').get(tt.id) as any;
+    const qs = tt.quality_score_json ? JSON.parse(tt.quality_score_json) : null;
+    return {
+      id: tt.id,
+      name: tt.name,
+      academicYearId: tt.academic_year_id,
+      departmentId: tt.department_id,
+      version: tt.version,
+      status: tt.status,
+      generationMode: tt.generation_mode,
+      qualityScore: qs,
+      totalEntries: entryCount?.cnt || 0,
+      conflictsCount: conflictCount?.cnt || 0,
+      createdBy: tt.created_by,
+      createdAt: tt.created_at,
+      updatedAt: tt.updated_at,
+      publishedAt: tt.published_at,
+      isActive: tt.id === 'tt-active'
+    };
+  });
+  res.json({ success: true, data });
+});
+
+// Create a new timetable
+apiRouter.post('/timetables', (req: Request, res: Response) => {
+  const {
+    name = 'New Academic Timetable',
+    academicYearId,
+    departmentId,
+    generationMode = 'MANUAL',
+    createdBy = 'Timetable Coordinator'
+  } = req.body;
+
+  const ay = academicYearId || (db.prepare('SELECT id FROM academic_years LIMIT 1').get() as any)?.id || 'ay-2026';
+  const newId = `tt-${Date.now()}`;
+
+  db.prepare(`
+    INSERT INTO timetables (
+      id, academic_year_id, department_id, name, version, status, generation_mode, created_by, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, 1, 'DRAFT', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+  `).run(newId, ay, departmentId || null, name, generationMode, createdBy);
+
+  res.json({
+    success: true,
+    data: {
+      id: newId,
+      name,
+      status: 'DRAFT',
+      generationMode,
+      version: 1
+    }
+  });
+});
+
+// Duplicate / Clone timetable
+apiRouter.post('/timetables/:id/duplicate', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const source = db.prepare('SELECT * FROM timetables WHERE id = ?').get(id as string) as any;
+  if (!source) {
+    return res.status(404).json({ success: false, error: 'Source timetable not found' });
+  }
+
+  const newId = `tt-${Date.now()}`;
+  const newName = `${source.name} (Copy)`;
+
+  runInTransaction(() => {
+    db.prepare(`
+      INSERT INTO timetables (
+        id, academic_year_id, department_id, name, version, status, generation_mode, profile_id, quality_score_json, created_by, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, 'DRAFT', ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `).run(
+      newId, source.academic_year_id, source.department_id, newName, source.version,
+      source.generation_mode, source.profile_id, source.quality_score_json, 'Timetable Coordinator'
+    );
+
+    const sourceEntries = db.prepare('SELECT * FROM timetable_entries WHERE timetable_id = ?').all(id as string) as any[];
+    const insertEntry = db.prepare(`
+      INSERT INTO timetable_entries (
+        id, timetable_id, activity_id, day_of_week, period_index, duration, room_id, is_locked, satisfaction_explanation
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    sourceEntries.forEach(e => {
+      insertEntry.run(
+        `ent-${newId}-${e.activity_id}-${Math.random().toString(36).substring(2, 7)}`,
+        newId, e.activity_id, e.day_of_week, e.period_index, e.duration, e.room_id, e.is_locked, e.satisfaction_explanation
+      );
+    });
+  });
+
+  res.json({ success: true, data: { id: newId, name: newName } });
+});
+
+// Delete a timetable
+apiRouter.delete('/timetables/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (id === 'tt-active') {
+    return res.status(400).json({ success: false, error: 'Cannot delete primary active timetable' });
+  }
+
+  runInTransaction(() => {
+    db.prepare('DELETE FROM timetable_entries WHERE timetable_id = ?').run(id as string);
+    db.prepare('DELETE FROM conflicts WHERE timetable_id = ?').run(id as string);
+    db.prepare('DELETE FROM timetable_versions WHERE timetable_id = ?').run(id as string);
+    db.prepare('DELETE FROM timetables WHERE id = ?').run(id as string);
+  });
+
+  res.json({ success: true, message: 'Timetable deleted successfully' });
+});
+
+// Add a manual Class / Session entry to a timetable
+apiRouter.post('/timetables/entries', (req: Request, res: Response) => {
+  const {
+    timetableId = 'tt-active',
+    activityId,
+    dayOfWeek,
+    periodIndex,
+    duration = 1,
+    roomId,
+    isLocked = false
+  } = req.body;
+
+  if (!activityId || dayOfWeek === undefined || periodIndex === undefined || !roomId) {
+    return res.status(400).json({ success: false, error: 'Missing required session parameters (activity, day, period, room)' });
+  }
+
+  const entryId = `ent-${timetableId}-${Date.now()}`;
+
+  runInTransaction(() => {
+    db.prepare(`
+      INSERT INTO timetable_entries (
+        id, timetable_id, activity_id, day_of_week, period_index, duration, room_id, is_locked, satisfaction_explanation
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      entryId, timetableId, activityId, dayOfWeek, periodIndex, duration, roomId, isLocked ? 1 : 0, 'Manually scheduled by coordinator'
+    );
+
+    // Recompute score and conflicts
+    const context = buildProblemContext();
+    const allEntriesRaw = db.prepare('SELECT * FROM timetable_entries WHERE timetable_id = ?').all(timetableId) as any[];
+    const assignments: ActivityAssignment[] = allEntriesRaw.map(e => ({
+      activityId: e.activity_id,
+      dayOfWeek: e.day_of_week,
+      periodIndex: e.period_index,
+      duration: e.duration,
+      roomId: e.room_id,
+      isLocked: Boolean(e.is_locked)
+    }));
+
+    const conflicts = ConflictEngine.detectConflicts(assignments, context);
+    const qualityScore = QualityScorer.calculate(assignments, context);
+
+    db.prepare('UPDATE timetables SET quality_score_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+      JSON.stringify(qualityScore), timetableId
+    );
+
+    db.prepare('DELETE FROM conflicts WHERE timetable_id = ?').run(timetableId);
+    const insertConf = db.prepare(`
+      INSERT INTO conflicts (
+        id, timetable_id, severity, conflict_type, title, description,
+        affected_activity_ids_json, affected_teacher_ids_json, affected_student_group_ids_json,
+        affected_room_ids_json, day_of_week, period_index, violated_constraint_rule, suggested_fix
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    conflicts.forEach(c => {
+      insertConf.run(
+        c.id, timetableId, c.severity, c.conflictType, c.title, c.description,
+        JSON.stringify(c.affectedActivityIds), JSON.stringify(c.affectedTeacherIds),
+        JSON.stringify(c.affectedStudentGroupIds), JSON.stringify(c.affectedRoomIds),
+        c.dayOfWeek, c.periodIndex, c.violatedConstraintRule, c.suggestedFix || null
+      );
+    });
+  });
+
+  res.json({ success: true, data: { entryId } });
+});
+
+// Delete a class session entry from a timetable
+apiRouter.delete('/timetables/entries/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const entry = db.prepare('SELECT * FROM timetable_entries WHERE id = ?').get(id as string) as any;
+  if (!entry) {
+    return res.status(404).json({ success: false, error: 'Timetable entry not found' });
+  }
+
+  runInTransaction(() => {
+    db.prepare('DELETE FROM timetable_entries WHERE id = ?').run(id as string);
+
+    // Recompute score and conflicts
+    const context = buildProblemContext();
+    const allEntriesRaw = db.prepare('SELECT * FROM timetable_entries WHERE timetable_id = ?').all(entry.timetable_id) as any[];
+    const assignments: ActivityAssignment[] = allEntriesRaw.map(e => ({
+      activityId: e.activity_id,
+      dayOfWeek: e.day_of_week,
+      periodIndex: e.period_index,
+      duration: e.duration,
+      roomId: e.room_id,
+      isLocked: Boolean(e.is_locked)
+    }));
+
+    const conflicts = ConflictEngine.detectConflicts(assignments, context);
+    const qualityScore = QualityScorer.calculate(assignments, context);
+
+    db.prepare('UPDATE timetables SET quality_score_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+      JSON.stringify(qualityScore), entry.timetable_id
+    );
+
+    db.prepare('DELETE FROM conflicts WHERE timetable_id = ?').run(entry.timetable_id);
+    const insertConf = db.prepare(`
+      INSERT INTO conflicts (
+        id, timetable_id, severity, conflict_type, title, description,
+        affected_activity_ids_json, affected_teacher_ids_json, affected_student_group_ids_json,
+        affected_room_ids_json, day_of_week, period_index, violated_constraint_rule, suggested_fix
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    conflicts.forEach(c => {
+      insertConf.run(
+        c.id, entry.timetable_id, c.severity, c.conflictType, c.title, c.description,
+        JSON.stringify(c.affectedActivityIds), JSON.stringify(c.affectedTeacherIds),
+        JSON.stringify(c.affectedStudentGroupIds), JSON.stringify(c.affectedRoomIds),
+        c.dayOfWeek, c.periodIndex, c.violatedConstraintRule, c.suggestedFix || null
+      );
+    });
+  });
+
+  res.json({ success: true, message: 'Session deleted' });
+});
+
 // Lock / Pin toggle
 apiRouter.post('/timetables/toggle-lock', (req: Request, res: Response) => {
   const { entryId } = req.body;

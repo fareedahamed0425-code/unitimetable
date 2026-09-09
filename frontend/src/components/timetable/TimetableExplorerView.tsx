@@ -10,10 +10,22 @@ import {
   Building,
   Move,
   X,
-  ChevronDown
+  ChevronDown,
+  Plus,
+  Trash2,
+  Copy,
+  FolderOpen,
+  Download,
+  FileSpreadsheet,
+  CheckCircle2,
+  Sparkles,
+  Layers,
+  Clock
 } from 'lucide-react';
 import { api } from '../../api';
 import {
+  Activity,
+  Course,
   Room,
   Teacher,
   TimeSlot,
@@ -40,18 +52,38 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
   const [filterType, setFilterType] = useState<'SECTION' | 'TEACHER' | 'ROOM' | 'ALL'>('ALL');
   const [selectedFilterId, setSelectedFilterId] = useState<string>('');
   const [sections, setSections] = useState<any[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [allTimetables, setAllTimetables] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<'WEEKLY' | 'DAILY' | 'LIST'>('WEEKLY');
   const [selectedDay, setSelectedDay] = useState<number>(0);
 
-  // Inspector state
+  // Inspector & Edit state
   const [selectedEntry, setSelectedEntry] = useState<TimetableEntry | null>(null);
-
-  // Move state
   const [movingEntry, setMovingEntry] = useState<TimetableEntry | null>(null);
   const [conflictWarning, setConflictWarning] = useState<TimetableConflict | null>(null);
 
+  // Modals state
+  const [isAddSessionModalOpen, setIsAddSessionModalOpen] = useState(false);
+  const [isManageTimetablesModalOpen, setIsManageTimetablesModalOpen] = useState(false);
+  const [isCreateTimetableModalOpen, setIsCreateTimetableModalOpen] = useState(false);
+
+  // Add Session Form state
+  const [newSessionDay, setNewSessionDay] = useState<number>(0);
+  const [newSessionPeriod, setNewSessionPeriod] = useState<number>(0);
+  const [newSessionActivityId, setNewSessionActivityId] = useState<string>('');
+  const [newSessionRoomId, setNewSessionRoomId] = useState<string>('');
+  const [newSessionDuration, setNewSessionDuration] = useState<number>(1);
+  const [newSessionLocked, setNewSessionLocked] = useState<boolean>(false);
+
+  // New Timetable Form
+  const [newTimetableName, setNewTimetableName] = useState('Draft Timetable (Semester 3)');
+  const [newTimetableMode, setNewTimetableMode] = useState<'MANUAL' | 'AUTOMATIC'>('MANUAL');
+
   useEffect(() => {
     loadHierarchySections();
+    loadActivitiesAndCourses();
+    loadTimetablesList();
   }, []);
 
   const loadHierarchySections = async () => {
@@ -64,6 +96,34 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
       }
     } catch (e) {
       console.error('Failed to load sections for explorer:', e);
+    }
+  };
+
+  const loadActivitiesAndCourses = async () => {
+    try {
+      const [acts, crs] = await Promise.all([
+        api.getActivities().catch(() => []),
+        api.getCourses().catch(() => [])
+      ]);
+      setActivities(acts || []);
+      setCourses(crs || []);
+      if (acts && acts.length > 0) {
+        setNewSessionActivityId(acts[0].id);
+      }
+      if (rooms && rooms.length > 0) {
+        setNewSessionRoomId(rooms[0].id);
+      }
+    } catch (e) {
+      console.error('Failed to load activities/courses:', e);
+    }
+  };
+
+  const loadTimetablesList = async () => {
+    try {
+      const list = await api.getAllTimetables();
+      setAllTimetables(list || []);
+    } catch (e) {
+      console.error('Failed to load timetables list:', e);
     }
   };
 
@@ -86,76 +146,179 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
     { index: 7, time: '16:00 - 17:00', label: 'Period 7' }
   ];
 
-  if (!timetable || timetable.entries.length === 0) {
-    return (
-      <div className="lux-card p-12 text-center space-y-4 max-w-xl mx-auto my-12">
-        <div className="w-10 h-10 rounded-lg bg-[#F4F4F1] text-[#121316] flex items-center justify-center mx-auto">
-          <Calendar className="w-5 h-5" />
-        </div>
-        <h2 className="text-base font-bold text-[#121316]">No Timetable Generated Yet</h2>
-        <p className="text-xs text-[#8B8E99]">
-          Run the Smart Generation Wizard to solve constraints and produce the live university schedule.
-        </p>
-      </div>
-    );
-  }
-
-  const filteredEntries = timetable.entries.filter(entry => {
-    if (filterType === 'ALL' || !selectedFilterId) return true;
+  // Filtering entries
+  const filteredEntries = (timetable?.entries || []).filter(e => {
+    if (filterType === 'ALL') return true;
     if (filterType === 'SECTION') {
-      return (
-        entry.sectionNames.includes(selectedFilterId) ||
-        entry.groupNames.some(g => g.includes(selectedFilterId)) ||
-        entry.sectionNames.some(s => s.toLowerCase() === selectedFilterId.toLowerCase())
-      );
+      return e.sectionNames.some(s => s.toLowerCase().includes(selectedFilterId.toLowerCase())) ||
+             e.groupNames.some(g => g.toLowerCase().includes(selectedFilterId.toLowerCase()));
     }
     if (filterType === 'TEACHER') {
-      return entry.teacherIds.includes(selectedFilterId);
+      const teacherObj = teachers.find(t => t.id === selectedFilterId);
+      const targetName = teacherObj ? teacherObj.name.toLowerCase() : selectedFilterId.toLowerCase();
+      return e.teacherIds.includes(selectedFilterId) || 
+             e.teacherNames.some(n => n.toLowerCase().includes(targetName));
     }
     if (filterType === 'ROOM') {
-      return entry.roomId === selectedFilterId;
+      return e.roomId === selectedFilterId;
     }
     return true;
   });
 
-  const handleToggleLock = async (entry: TimetableEntry, e: React.MouseEvent) => {
-    e.stopPropagation();
-    await api.toggleLock(entry.id);
-    onRefresh();
+  const handleCellClick = (dayId: number, periodIndex: number) => {
+    if (movingEntry) {
+      handleCompleteMove(dayId, periodIndex);
+    } else {
+      // Open Add Session modal pre-filled with this slot
+      setNewSessionDay(dayId);
+      setNewSessionPeriod(periodIndex);
+      setIsAddSessionModalOpen(true);
+    }
   };
 
-  const handleSlotClick = async (day: number, period: number) => {
+  const handleCompleteMove = async (dayId: number, periodIndex: number) => {
     if (!movingEntry) return;
 
-    const res = await api.moveEntry({
-      entryId: movingEntry.id,
-      dayOfWeek: day,
-      periodIndex: period
-    });
+    try {
+      const res = await api.moveEntry({
+        entryId: movingEntry.id,
+        dayOfWeek: dayId,
+        periodIndex: periodIndex
+      });
 
-    if (res.conflicts.length > 0) {
-      setConflictWarning(res.conflicts[0]);
-    } else {
-      setConflictWarning(null);
+      if (res.conflicts && res.conflicts.length > 0) {
+        setConflictWarning(res.conflicts[0]);
+      } else {
+        setConflictWarning(null);
+      }
+    } catch (err) {
+      console.error('Move error:', err);
     }
 
     setMovingEntry(null);
     onRefresh();
   };
 
+  const handleToggleLock = async (entryId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await api.toggleLock(entryId);
+      onRefresh();
+    } catch (err) {
+      console.error('Lock error:', err);
+    }
+  };
+
+  const handleDeleteEntry = async (entryId: string) => {
+    if (!confirm('Are you sure you want to delete this class session?')) return;
+    try {
+      await api.deleteTimetableEntry(entryId);
+      setSelectedEntry(null);
+      onRefresh();
+    } catch (err) {
+      console.error('Delete entry error:', err);
+    }
+  };
+
+  const handleAddSession = async () => {
+    if (!newSessionActivityId || !newSessionRoomId) {
+      alert('Please select an activity and a venue/room.');
+      return;
+    }
+
+    try {
+      await api.addTimetableEntry({
+        timetableId: timetable?.id || 'tt-active',
+        activityId: newSessionActivityId,
+        dayOfWeek: newSessionDay,
+        periodIndex: newSessionPeriod,
+        duration: newSessionDuration,
+        roomId: newSessionRoomId,
+        isLocked: newSessionLocked
+      });
+
+      setIsAddSessionModalOpen(false);
+      onRefresh();
+    } catch (err) {
+      console.error('Add session error:', err);
+      alert('Failed to add session. Please check parameters.');
+    }
+  };
+
+  const handleCreateTimetable = async () => {
+    if (!newTimetableName.trim()) return;
+    try {
+      await api.createTimetable({
+        name: newTimetableName,
+        generationMode: newTimetableMode
+      });
+      setIsCreateTimetableModalOpen(false);
+      loadTimetablesList();
+      onRefresh();
+    } catch (err) {
+      console.error('Create timetable error:', err);
+    }
+  };
+
+  const handleDuplicateTimetable = async (ttId: string) => {
+    try {
+      await api.duplicateTimetable(ttId);
+      loadTimetablesList();
+      onRefresh();
+    } catch (err) {
+      console.error('Duplicate error:', err);
+    }
+  };
+
+  const handleDeleteTimetable = async (ttId: string) => {
+    if (!confirm('Are you sure you want to delete this timetable?')) return;
+    try {
+      await api.deleteTimetable(ttId);
+      loadTimetablesList();
+      onRefresh();
+    } catch (err) {
+      console.error('Delete timetable error:', err);
+    }
+  };
+
+  const handleExportCsv = () => {
+    if (!timetable || timetable.entries.length === 0) return;
+    const headers = ['Day', 'Period', 'Course Code', 'Course Name', 'Type', 'Room', 'Teachers', 'Cohorts'];
+    const rows = timetable.entries.map(e => [
+      days.find(d => d.id === e.dayOfWeek)?.name || e.dayOfWeek,
+      periods.find(p => p.index === e.periodIndex)?.time || e.periodIndex,
+      e.courseCode,
+      `"${e.courseName}"`,
+      e.activityType,
+      `"${e.roomName}"`,
+      `"${e.teacherNames.join(', ')}"`,
+      `"${e.sectionNames.join(', ')}"`
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${timetable.name.replace(/\s+/g, '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
-    <div className="space-y-5">
-      {/* Control Bar: Swiss Filter Suite & Segmented Controls */}
-      <div className="lux-card p-3 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+    <div className="space-y-4 max-w-full">
+      {/* Control Bar: Swiss Filter Suite & Actions */}
+      <div className="lux-card p-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 bg-white border-[#E8E7E3]">
         {/* Left: Filter Controls */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-[#8B8E99] pr-1">
             <Filter className="w-3.5 h-3.5" /> Filter:
           </div>
 
           <div className="relative">
             <select
-              className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer"
+              className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer bg-[#F9F9F8] border-[#E8E7E3]"
               value={filterType}
               onChange={e => {
                 const ft = e.target.value as any;
@@ -176,7 +339,7 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
           {filterType === 'SECTION' && (
             <div className="relative">
               <select
-                className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer"
+                className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer bg-[#F9F9F8] border-[#E8E7E3]"
                 value={selectedFilterId}
                 onChange={e => setSelectedFilterId(e.target.value)}
               >
@@ -193,7 +356,7 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
           {filterType === 'TEACHER' && (
             <div className="relative">
               <select
-                className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer"
+                className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer bg-[#F9F9F8] border-[#E8E7E3]"
                 value={selectedFilterId}
                 onChange={e => setSelectedFilterId(e.target.value)}
               >
@@ -210,7 +373,7 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
           {filterType === 'ROOM' && (
             <div className="relative">
               <select
-                className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer"
+                className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer bg-[#F9F9F8] border-[#E8E7E3]"
                 value={selectedFilterId}
                 onChange={e => setSelectedFilterId(e.target.value)}
               >
@@ -225,57 +388,61 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
           )}
         </div>
 
-        {/* Right: Segmented View Controls & Print */}
-        <div className="flex items-center gap-2">
-          <div className="bg-[#F4F4F1] p-0.5 rounded-lg flex items-center border border-[#E8E7E3]">
-            <button
-              onClick={() => setViewMode('WEEKLY')}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
-                viewMode === 'WEEKLY' ? 'bg-white text-[#121316] shadow-xs' : 'text-[#575A65] hover:text-[#121316]'
-              }`}
-            >
-              Weekly
-            </button>
-            <button
-              onClick={() => setViewMode('DAILY')}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
-                viewMode === 'DAILY' ? 'bg-white text-[#121316] shadow-xs' : 'text-[#575A65] hover:text-[#121316]'
-              }`}
-            >
-              Daily
-            </button>
-            <button
-              onClick={() => setViewMode('LIST')}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
-                viewMode === 'LIST' ? 'bg-white text-[#121316] shadow-xs' : 'text-[#575A65] hover:text-[#121316]'
-              }`}
-            >
-              List
-            </button>
-          </div>
+        {/* Right: Add Session, Manage Timetables, Export Suite */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Add Class Button */}
+          <button
+            onClick={() => {
+              setNewSessionDay(0);
+              setNewSessionPeriod(0);
+              setIsAddSessionModalOpen(true);
+            }}
+            className="lux-btn text-xs py-1.5 px-3 bg-[#121316] text-white hover:bg-black flex items-center gap-1.5 rounded-lg shadow-xs"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Class / Session</span>
+          </button>
+
+          {/* Manage / Switch Timetables */}
+          <button
+            onClick={() => setIsManageTimetablesModalOpen(true)}
+            className="lux-btn text-xs py-1.5 px-3 bg-white border border-[#E8E7E3] hover:bg-[#F9F9F8] text-[#121316] flex items-center gap-1.5 rounded-lg"
+          >
+            <FolderOpen className="w-3.5 h-3.5 text-[#575A65]" />
+            <span>Timetables ({allTimetables.length})</span>
+          </button>
+
+          {/* Export Suite */}
+          <button
+            onClick={handleExportCsv}
+            title="Export Timetable as CSV / Excel"
+            className="lux-btn text-xs py-1.5 px-2.5 bg-white border border-[#E8E7E3] hover:bg-[#F9F9F8] text-[#575A65]"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+          </button>
 
           <button
             onClick={() => window.print()}
-            className="lux-btn text-xs py-1.5 px-3 flex items-center gap-1.5"
+            title="Print Timetable"
+            className="lux-btn text-xs py-1.5 px-2.5 bg-white border border-[#E8E7E3] hover:bg-[#F9F9F8] text-[#575A65]"
           >
-            <Printer className="w-3.5 h-3.5 text-[#575A65]" />
-            <span>Print</span>
+            <Printer className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
       {/* Moving Mode Notice */}
       {movingEntry && (
-        <div className="p-3 rounded-lg bg-[#121316] text-white text-xs flex items-center justify-between shadow-xs">
+        <div className="p-3 rounded-xl bg-[#121316] text-white text-xs flex items-center justify-between shadow-xs animate-fadeIn">
           <div className="flex items-center gap-2.5">
-            <Move className="w-4 h-4" />
+            <Move className="w-4 h-4 text-amber-400" />
             <span>
-              <strong>Relocating session:</strong> '{movingEntry.courseCode} — {movingEntry.activityName}'. Click target period on grid.
+              <strong>Relocating session:</strong> '{movingEntry.courseCode} — {movingEntry.activityName}'. Click any target cell on the grid below.
             </span>
           </div>
           <button
             onClick={() => setMovingEntry(null)}
-            className="text-xs font-bold text-white/80 hover:text-white underline"
+            className="text-xs font-bold text-white/80 hover:text-white underline px-2 py-1"
           >
             Cancel
           </button>
@@ -284,7 +451,7 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
 
       {/* Conflict Warning Banner */}
       {conflictWarning && (
-        <div className="p-3.5 rounded-lg bg-[#FEF2F2] border border-[#FCA5A5] text-xs text-[#B91C1C] flex items-start gap-3">
+        <div className="p-3.5 rounded-xl bg-[#FEF2F2] border border-[#FCA5A5] text-xs text-[#B91C1C] flex items-start gap-3 animate-fadeIn">
           <AlertTriangle className="w-4 h-4 text-[#B91C1C] flex-shrink-0 mt-0.5" />
           <div className="space-y-0.5">
             <div className="font-bold text-[#B91C1C]">{conflictWarning.title}</div>
@@ -295,297 +462,451 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
       )}
 
       {/* 1. WEEKLY GRID VIEW */}
-      {viewMode === 'WEEKLY' && (
-        <div className="lux-card overflow-hidden border-[#E8E7E3]">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse min-w-[960px]">
-              <thead>
-                <tr className="bg-[#FAF9F7] border-b border-[#E8E7E3]">
-                  <th className="p-3 text-left text-xs font-bold uppercase tracking-wider text-[#8B8E99] w-28 pl-4">
-                    Time / Slot
+      <div className="lux-card overflow-hidden border-[#E8E7E3] bg-white">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse min-w-[960px]">
+            <thead>
+              <tr className="bg-[#FAF9F7] border-b border-[#E8E7E3]">
+                <th className="p-3 text-left text-xs font-bold uppercase tracking-wider text-[#8B8E99] w-28 pl-4">
+                  Time / Slot
+                </th>
+                {days.map(d => (
+                  <th key={d.id} className="p-3 text-center text-xs font-bold text-[#121316]">
+                    {d.name}
                   </th>
-                  {days.map(d => (
-                    <th
-                      key={d.id}
-                      className="p-3 text-center text-xs font-bold text-[#121316]"
-                    >
-                      {d.name}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E8E7E3]">
-                {periods.map(p => {
-                  if (p.isBreak) {
-                    return (
-                      <tr key={p.index} className="bg-[#F8F7F4]">
-                        <td className="p-2.5 text-[11px] font-semibold text-[#575A65] pl-4 border-r border-[#E8E7E3]">
-                          {p.time}
-                        </td>
-                        <td
-                          colSpan={5}
-                          className="p-2 text-center text-[11px] font-bold text-[#575A65] tracking-widest uppercase"
-                        >
-                          — {p.label} (Lunch & Common Period) —
-                        </td>
-                      </tr>
-                    );
-                  }
-
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#E8E7E3]">
+              {periods.map(p => {
+                if (p.isBreak) {
                   return (
-                    <tr key={p.index} className="h-28 hover:bg-[#FAF9F7]/60 transition-colors">
-                      <td className="p-2.5 text-[11px] font-medium text-[#575A65] bg-[#FAF9F7]/80 align-top pl-4 border-r border-[#E8E7E3]">
-                        <div className="font-bold text-[#121316]">{p.label}</div>
-                        <div className="text-[10px] text-[#8B8E99] mt-0.5">{p.time}</div>
+                    <tr key={p.index} className="bg-[#F6F5F2]/70">
+                      <td className="p-2.5 text-xs font-bold text-[#8B8E99] pl-4 whitespace-nowrap">
+                        {p.time}
                       </td>
-
-                      {days.map(d => {
-                        const slotEntries = filteredEntries.filter(
-                          e => e.dayOfWeek === d.id && (
-                            e.periodIndex === p.index ||
-                            (e.duration === 2 && e.periodIndex === p.index - 1 && p.index !== 5)
-                          )
-                        );
-
-                        return (
-                          <td
-                            key={d.id}
-                            onClick={() => handleSlotClick(d.id, p.index)}
-                            className={`p-1.5 align-top border-r border-[#E8E7E3] last:border-r-0 transition-colors ${
-                              movingEntry ? 'hover:bg-[#F4F4F1] cursor-pointer' : ''
-                            }`}
-                          >
-                            <div className="space-y-1.5 min-h-[6rem]">
-                              {slotEntries.map(entry => {
-                                const isLab = entry.activityType === 'LABORATORY';
-                                const isTutorial = entry.activityType === 'TUTORIAL';
-                                const isSeminar = entry.activityType === 'SEMINAR';
-
-                                return (
-                                  <div
-                                    key={entry.id}
-                                    onClick={() => setSelectedEntry(entry)}
-                                    className={`activity-card ${
-                                      isLab
-                                        ? 'type-lab'
-                                        : isTutorial
-                                        ? 'type-tutorial'
-                                        : isSeminar
-                                        ? 'type-seminar'
-                                        : 'type-lecture'
-                                    } ${entry.isLocked ? 'is-locked' : ''}`}
-                                  >
-                                    <div className="flex items-start justify-between gap-1">
-                                      <span className="font-bold text-xs text-[#121316]">
-                                        {entry.courseCode}
-                                      </span>
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={e => handleToggleLock(entry, e)}
-                                          title={entry.isLocked ? 'Pinned' : 'Unlock'}
-                                          className="text-[#8B8E99] hover:text-[#121316]"
-                                        >
-                                          {entry.isLocked ? (
-                                            <Lock className="w-3 h-3 text-[#121316]" />
-                                          ) : (
-                                            <Unlock className="w-3 h-3 text-[#8B8E99]" />
-                                          )}
-                                        </button>
-                                        <button
-                                          onClick={e => {
-                                            e.stopPropagation();
-                                            setMovingEntry(entry);
-                                          }}
-                                          title="Move Class"
-                                          className="text-[#8B8E99] hover:text-[#121316]"
-                                        >
-                                          <Move className="w-3 h-3" />
-                                        </button>
-                                      </div>
-                                    </div>
-
-                                    <div className="text-[11px] font-medium text-[#575A65] truncate mt-0.5">
-                                      {entry.activityName}
-                                    </div>
-
-                                    <div className="text-[10px] text-[#8B8E99] flex items-center gap-1 mt-1">
-                                      <Users className="w-3 h-3 text-[#8B8E99]" />
-                                      <span className="truncate">{entry.teacherNames.join(', ')}</span>
-                                    </div>
-
-                                    <div className="text-[10px] text-[#575A65] flex items-center justify-between mt-1 pt-1 border-t border-[#F0EFEA]">
-                                      <span className="flex items-center gap-1 font-medium text-[#121316]">
-                                        <Building className="w-3 h-3 text-[#8B8E99]" />
-                                        {entry.roomName}
-                                      </span>
-                                      {entry.duration > 1 && (
-                                        <span className="text-[9px] font-bold px-1.5 py-0.2 bg-[#F4F4F1] text-[#121316] border border-[#E8E7E3] rounded">
-                                          {entry.duration} hrs
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </td>
-                        );
-                      })}
+                      <td colSpan={5} className="p-2.5 text-center text-xs font-bold tracking-wider text-[#8B8E99] uppercase">
+                        — {p.label} (Recess) —
+                      </td>
                     </tr>
                   );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+                }
 
-      {/* 2. LIST VIEW */}
-      {viewMode === 'LIST' && (
-        <div className="lux-card p-5 space-y-3">
-          <div className="text-xs font-bold text-[#8B8E99] uppercase tracking-wider mb-2">
-            Scheduled Sessions ({filteredEntries.length})
-          </div>
-          <div className="space-y-2">
-            {filteredEntries.map(entry => {
-              const dayName = days[entry.dayOfWeek]?.name || 'Monday';
-              const pLabel = periods.find(p => p.index === entry.periodIndex)?.time || '09:00';
+                return (
+                  <tr key={p.index} className="hover:bg-[#FCFCFA] transition-colors">
+                    <td className="p-3 text-xs font-semibold text-[#575A65] pl-4 border-r border-[#E8E7E3] whitespace-nowrap align-top">
+                      <div>{p.time}</div>
+                      <div className="text-[10px] text-[#8B8E99] mt-0.5">{p.label}</div>
+                    </td>
 
-              return (
-                <div
-                  key={entry.id}
-                  onClick={() => setSelectedEntry(entry)}
-                  className="p-3.5 rounded-lg border border-[#E8E7E3] bg-white hover:border-[#121316] transition-all flex items-center justify-between gap-4 cursor-pointer"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-xs text-[#121316]">{entry.courseCode}</span>
-                      <span className="text-xs text-[#575A65] font-semibold">{entry.activityName}</span>
-                      <span className="badge badge-primary text-[10px]">
-                        {entry.activityType}
-                      </span>
-                    </div>
-                    <div className="text-xs text-[#8B8E99] flex items-center gap-4">
-                      <span>Faculty: <strong>{entry.teacherNames.join(', ')}</strong></span>
-                      <span>Venue: <strong>{entry.roomName}</strong> ({entry.buildingName})</span>
-                    </div>
-                  </div>
+                    {days.map(d => {
+                      const cellEntries = filteredEntries.filter(
+                        e => e.dayOfWeek === d.id && e.periodIndex === p.index
+                      );
 
-                  <div className="text-right">
-                    <div className="text-xs font-bold text-[#121316]">{dayName}</div>
-                    <div className="text-[11px] text-[#8B8E99]">{pLabel} ({entry.duration} hr)</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* 3. DAILY VIEW */}
-      {viewMode === 'DAILY' && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            {days.map(d => (
-              <button
-                key={d.id}
-                onClick={() => setSelectedDay(d.id)}
-                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  selectedDay === d.id ? 'bg-[#121316] text-white' : 'bg-white border border-[#E8E7E3] text-[#575A65]'
-                }`}
-              >
-                {d.name}
-              </button>
-            ))}
-          </div>
-
-          <div className="lux-card p-5 divide-y divide-[#E8E7E3]">
-            {periods.filter(p => !p.isBreak).map(p => {
-              const entriesInPeriod = filteredEntries.filter(
-                e => e.dayOfWeek === selectedDay && (
-                  e.periodIndex === p.index || (e.duration === 2 && e.periodIndex === p.index - 1)
-                )
-              );
-
-              return (
-                <div key={p.index} className="py-3 flex items-start gap-6">
-                  <div className="w-28 text-xs text-[#575A65] flex-shrink-0">
-                    <div className="font-bold text-[#121316]">{p.label}</div>
-                    <div className="text-[11px] text-[#8B8E99]">{p.time}</div>
-                  </div>
-
-                  <div className="flex-1 space-y-2">
-                    {entriesInPeriod.length === 0 ? (
-                      <div className="text-xs text-[#8B8E99] italic py-1">No scheduled session</div>
-                    ) : (
-                      entriesInPeriod.map(entry => (
-                        <div
-                          key={entry.id}
-                          onClick={() => setSelectedEntry(entry)}
-                          className="p-3 rounded-lg bg-[#FAF9F7] border border-[#E8E7E3] flex items-center justify-between cursor-pointer hover:border-[#121316] transition-all"
+                      return (
+                        <td
+                          key={d.id}
+                          onClick={() => handleCellClick(d.id, p.index)}
+                          className={`p-2 align-top border-r border-[#E8E7E3] last:border-r-0 min-h-[90px] h-[90px] cursor-pointer transition-colors relative ${
+                            movingEntry ? 'hover:bg-amber-50/60' : 'hover:bg-[#F9F9F8]'
+                          }`}
                         >
-                          <div>
-                            <div className="font-bold text-xs text-[#121316]">{entry.courseCode} — {entry.activityName}</div>
-                            <div className="text-[11px] text-[#575A65] mt-0.5">Faculty: {entry.teacherNames.join(', ')} | Venue: {entry.roomName}</div>
-                          </div>
-                          <span className="badge badge-primary">{entry.activityType}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+                          {cellEntries.length === 0 && (
+                            <div className="h-full min-h-[70px] flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                              <span className="text-[10px] text-[#8B8E99] flex items-center gap-1 font-medium bg-white px-2 py-1 rounded border border-[#E8E7E3]">
+                                <Plus className="w-3 h-3" /> Add Class
+                              </span>
+                            </div>
+                          )}
 
-      {/* Specification Inspector Modal */}
-      {selectedEntry && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="lux-modal max-w-lg w-full p-6 space-y-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-[#F4F4F1] text-[#575A65] border border-[#E8E7E3] inline-block mb-1.5">
-                  Explainable Scheduling Inspector
-                </span>
-                <h3 className="text-base font-bold text-[#121316]">
-                  {selectedEntry.courseCode} — {selectedEntry.activityName}
-                </h3>
+                          <div className="space-y-1.5">
+                            {cellEntries.map(entry => (
+                              <div
+                                key={entry.id}
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setSelectedEntry(entry);
+                                }}
+                                className={`p-2.5 rounded-lg border text-left transition-all relative group shadow-2xs ${
+                                  entry.activityType === 'LABORATORY'
+                                    ? 'bg-[#FAF5FF] border-[#E9D5FF] text-[#581C87]'
+                                    : entry.activityType === 'TUTORIAL'
+                                    ? 'bg-[#F0FDF4] border-[#BBF7D0] text-[#166534]'
+                                    : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#1E293B]'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-1">
+                                  <span className="font-bold text-xs truncate max-w-[120px]">
+                                    {entry.courseCode}
+                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    {entry.isLocked && (
+                                      <Lock
+                                        onClick={e => handleToggleLock(entry.id, e)}
+                                        className="w-3 h-3 text-[#8B8E99] hover:text-[#121316] cursor-pointer"
+                                      />
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="text-[11px] font-medium truncate text-[#121316] mt-0.5">
+                                  {entry.activityName}
+                                </div>
+
+                                <div className="flex items-center justify-between text-[10px] text-[#575A65] mt-1.5 pt-1 border-t border-black/5">
+                                  <span className="truncate font-semibold">{entry.roomName}</span>
+                                  <span className="truncate">{entry.teacherNames[0] || 'Teacher'}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 2. ADD CLASS / SESSION MODAL */}
+      {isAddSessionModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-[#E8E7E3] shadow-xl max-w-lg w-full p-6 space-y-4 animate-scaleUp">
+            <div className="flex items-center justify-between border-b border-[#E8E7E3] pb-3">
+              <div className="flex items-center gap-2">
+                <Plus className="w-4 h-4 text-purple-600" />
+                <h3 className="text-sm font-bold text-[#121316]">Schedule Class / Lecture Session</h3>
               </div>
               <button
-                onClick={() => setSelectedEntry(null)}
-                className="w-7 h-7 rounded bg-[#F4F4F1] text-[#575A65] hover:text-[#121316] flex items-center justify-center"
+                onClick={() => setIsAddSessionModalOpen(false)}
+                className="p-1.5 rounded-lg text-[#8B8E99] hover:text-[#121316] hover:bg-[#F4F4F1]"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-3">
-              <div className="p-3.5 rounded-lg bg-[#FAF9F7] border border-[#E8E7E3] text-xs text-[#575A65] space-y-2 whitespace-pre-line leading-relaxed font-mono">
-                {selectedEntry.satisfactionExplanation || 'Scheduled using constraint solver heuristic rules.'}
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-[11px] font-bold text-[#575A65] uppercase">Select Course Activity / Lab</label>
+                <select
+                  value={newSessionActivityId}
+                  onChange={e => setNewSessionActivityId(e.target.value)}
+                  className="lux-select w-full mt-1 bg-[#F9F9F8] border-[#E8E7E3] text-xs"
+                >
+                  {activities.map(act => (
+                    <option key={act.id} value={act.id}>
+                      {act.name} ({act.activityType}, {act.durationPeriods} period)
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-3 rounded-lg border border-[#E8E7E3] bg-white">
-                  <div className="text-[#8B8E99] uppercase text-[9px] font-bold tracking-wider">Assigned Venue</div>
-                  <div className="font-semibold text-[#121316] mt-0.5">{selectedEntry.roomName}</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-[#575A65] uppercase">Day of Week</label>
+                  <select
+                    value={newSessionDay}
+                    onChange={e => setNewSessionDay(Number(e.target.value))}
+                    className="lux-select w-full mt-1 bg-[#F9F9F8] border-[#E8E7E3] text-xs"
+                  >
+                    {days.map(d => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
                 </div>
-                <div className="p-3 rounded-lg border border-[#E8E7E3] bg-white">
-                  <div className="text-[#8B8E99] uppercase text-[9px] font-bold tracking-wider">Assigned Faculty</div>
-                  <div className="font-semibold text-[#121316] mt-0.5">{selectedEntry.teacherNames.join(', ')}</div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-[#575A65] uppercase">Starting Period</label>
+                  <select
+                    value={newSessionPeriod}
+                    onChange={e => setNewSessionPeriod(Number(e.target.value))}
+                    className="lux-select w-full mt-1 bg-[#F9F9F8] border-[#E8E7E3] text-xs"
+                  >
+                    {periods.filter(p => !p.isBreak).map(p => (
+                      <option key={p.index} value={p.index}>{p.time} ({p.label})</option>
+                    ))}
+                  </select>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-[#575A65] uppercase">Venue / Classroom</label>
+                  <select
+                    value={newSessionRoomId}
+                    onChange={e => setNewSessionRoomId(e.target.value)}
+                    className="lux-select w-full mt-1 bg-[#F9F9F8] border-[#E8E7E3] text-xs"
+                  >
+                    {rooms.map(r => (
+                      <option key={r.id} value={r.id}>{r.name} ({r.roomType}, {r.capacity} seats)</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-[#575A65] uppercase">Duration (Periods)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={3}
+                    value={newSessionDuration}
+                    onChange={e => setNewSessionDuration(Number(e.target.value))}
+                    className="lux-input w-full mt-1 bg-[#F9F9F8] border-[#E8E7E3] text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="lockCheckbox"
+                  checked={newSessionLocked}
+                  onChange={e => setNewSessionLocked(e.target.checked)}
+                  className="rounded border-[#E8E7E3]"
+                />
+                <label htmlFor="lockCheckbox" className="text-xs text-[#575A65] font-medium cursor-pointer">
+                  Lock slot (prevents automatic AI re-shuffling)
+                </label>
               </div>
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E8E7E3]">
               <button
-                onClick={() => setSelectedEntry(null)}
-                className="lux-btn lux-btn-primary text-xs py-2 px-5"
+                onClick={() => setIsAddSessionModalOpen(false)}
+                className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#F4F4F1] text-[#575A65] hover:bg-[#E8E7E3]"
               >
-                Done
+                Cancel
+              </button>
+              <button
+                onClick={handleAddSession}
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-[#121316] text-white hover:bg-black shadow-xs flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Save to Timetable</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. MANAGE TIMETABLES & VERSIONS MODAL */}
+      {isManageTimetablesModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-[#E8E7E3] shadow-xl max-w-2xl w-full p-6 space-y-4 animate-scaleUp">
+            <div className="flex items-center justify-between border-b border-[#E8E7E3] pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-[#121316]">University Timetable Registry</h3>
+                <p className="text-xs text-[#8B8E99]">Saved schedules, simulation copies, and revision versions</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsCreateTimetableModalOpen(true)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#121316] text-white hover:bg-black flex items-center gap-1 shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Create New</span>
+                </button>
+                <button
+                  onClick={() => setIsManageTimetablesModalOpen(false)}
+                  className="p-1.5 rounded-lg text-[#8B8E99] hover:text-[#121316] hover:bg-[#F4F4F1]"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-[360px] overflow-y-auto divide-y divide-[#E8E7E3]">
+              {allTimetables.map(tt => (
+                <div key={tt.id} className="p-3.5 flex items-center justify-between gap-4 hover:bg-[#F9F9F8] rounded-xl transition-colors">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-[#121316]">{tt.name}</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                        {tt.status}
+                      </span>
+                      {tt.isActive && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-[#575A65] flex items-center gap-3">
+                      <span>{tt.totalEntries} Scheduled Sessions</span>
+                      <span>•</span>
+                      <span>Quality: {tt.qualityScore?.overallScore ?? 94}%</span>
+                      <span>•</span>
+                      <span>v{tt.version}.0</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => handleDuplicateTimetable(tt.id)}
+                      title="Duplicate Timetable"
+                      className="p-2 rounded-lg text-[#575A65] hover:text-[#121316] hover:bg-[#E8E7E3] transition-colors"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                    {!tt.isActive && (
+                      <button
+                        onClick={() => handleDeleteTimetable(tt.id)}
+                        title="Delete Timetable"
+                        className="p-2 rounded-lg text-[#B91C1C] hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setIsManageTimetablesModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-[#F4F4F1] text-xs font-semibold text-[#121316] hover:bg-[#E8E7E3]"
+              >
+                Close Registry
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. CREATE NEW TIMETABLE MODAL */}
+      {isCreateTimetableModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-[#E8E7E3] shadow-xl max-w-md w-full p-6 space-y-4 animate-scaleUp">
+            <div className="flex items-center justify-between border-b border-[#E8E7E3] pb-3">
+              <h3 className="text-sm font-bold text-[#121316]">Create Academic Timetable</h3>
+              <button
+                onClick={() => setIsCreateTimetableModalOpen(false)}
+                className="p-1.5 rounded-lg text-[#8B8E99] hover:text-[#121316] hover:bg-[#F4F4F1]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-[11px] font-bold text-[#575A65] uppercase">Timetable Title</label>
+                <input
+                  type="text"
+                  value={newTimetableName}
+                  onChange={e => setNewTimetableName(e.target.value)}
+                  placeholder="e.g. CSE Odd Semester 2026-27"
+                  className="lux-input w-full mt-1 bg-[#F9F9F8] border-[#E8E7E3] text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-[#575A65] uppercase">Initial Mode</label>
+                <select
+                  value={newTimetableMode}
+                  onChange={e => setNewTimetableMode(e.target.value as any)}
+                  className="lux-select w-full mt-1 bg-[#F9F9F8] border-[#E8E7E3] text-xs"
+                >
+                  <option value="MANUAL">Manual Grid Building</option>
+                  <option value="AUTOMATIC">Automatic AI Solver Target</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E8E7E3]">
+              <button
+                onClick={() => setIsCreateTimetableModalOpen(false)}
+                className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#F4F4F1] text-[#575A65]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateTimetable}
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-[#121316] text-white hover:bg-black shadow-xs"
+              >
+                Create Schedule
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. SELECTED SESSION INSPECTOR DRAWER */}
+      {selectedEntry && (
+        <div className="fixed inset-y-0 right-0 z-50 w-80 bg-white border-l border-[#E8E7E3] shadow-2xl p-6 flex flex-col justify-between animate-slideInRight">
+          <div className="space-y-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded bg-purple-100 text-purple-800">
+                  {selectedEntry.activityType}
+                </span>
+                <h3 className="text-base font-bold text-[#121316] mt-2">{selectedEntry.courseCode}</h3>
+                <p className="text-xs text-[#8B8E99]">{selectedEntry.courseName}</p>
+              </div>
+              <button
+                onClick={() => setSelectedEntry(null)}
+                className="p-1.5 rounded-lg text-[#8B8E99] hover:text-[#121316] hover:bg-[#F4F4F1]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs border-t border-[#E8E7E3] pt-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[#8B8E99]">Day & Time:</span>
+                <span className="font-semibold text-[#121316]">
+                  {days.find(d => d.id === selectedEntry.dayOfWeek)?.name} • Period {selectedEntry.periodIndex + 1}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-[#8B8E99]">Venue / Room:</span>
+                <span className="font-semibold text-[#121316]">{selectedEntry.roomName} ({selectedEntry.buildingName})</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-[#8B8E99]">Instructor:</span>
+                <span className="font-semibold text-[#121316]">{selectedEntry.teacherNames.join(', ') || 'N/A'}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-[#8B8E99]">Target Cohort:</span>
+                <span className="font-semibold text-[#121316]">{selectedEntry.sectionNames.join(', ') || 'All Students'}</span>
+              </div>
+
+              {selectedEntry.satisfactionExplanation && (
+                <div className="p-3 rounded-xl bg-[#F9F9F8] border border-[#E8E7E3] space-y-1">
+                  <div className="text-[10px] uppercase font-bold text-[#8B8E99]">Solver Placement Explanation</div>
+                  <div className="text-[11px] text-[#575A65] leading-relaxed">
+                    {selectedEntry.satisfactionExplanation}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-4 border-t border-[#E8E7E3]">
+            <button
+              onClick={() => {
+                setMovingEntry(selectedEntry);
+                setSelectedEntry(null);
+              }}
+              className="w-full py-2.5 rounded-xl bg-[#F4F4F1] text-[#121316] text-xs font-semibold hover:bg-[#E8E7E3] flex items-center justify-center gap-2"
+            >
+              <Move className="w-3.5 h-3.5" />
+              <span>Relocate / Move Session</span>
+            </button>
+
+            <button
+              onClick={() => handleDeleteEntry(selectedEntry.id)}
+              className="w-full py-2.5 rounded-xl bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100 flex items-center justify-center gap-2"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Session</span>
+            </button>
           </div>
         </div>
       )}

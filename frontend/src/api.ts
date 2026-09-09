@@ -148,6 +148,60 @@ export const api = {
     return json.data;
   },
 
+  async getAllTimetables(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/timetables`);
+    const json = await res.json();
+    return json.data;
+  },
+
+  async createTimetable(data: { name: string; generationMode?: string }): Promise<any> {
+    const res = await fetch(`${API_BASE}/timetables`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const json = await res.json();
+    return json.data;
+  },
+
+  async duplicateTimetable(id: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/timetables/${id}/duplicate`, {
+      method: 'POST'
+    });
+    const json = await res.json();
+    return json.data;
+  },
+
+  async deleteTimetable(id: string): Promise<void> {
+    await fetch(`${API_BASE}/timetables/${id}`, {
+      method: 'DELETE'
+    });
+  },
+
+  async addTimetableEntry(data: {
+    timetableId?: string;
+    activityId: string;
+    dayOfWeek: number;
+    periodIndex: number;
+    duration?: number;
+    roomId: string;
+    isLocked?: boolean;
+  }): Promise<{ entryId: string }> {
+    const res = await fetch(`${API_BASE}/timetables/entries`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const json = await res.json();
+    return json.data;
+  },
+
+  async deleteTimetableEntry(id: string): Promise<void> {
+    await fetch(`${API_BASE}/timetables/entries/${id}`, {
+      method: 'DELETE'
+    });
+  },
+
   async moveEntry(data: {
     entryId: string;
     dayOfWeek: number;
