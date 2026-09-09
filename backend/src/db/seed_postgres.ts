@@ -1,25 +1,13 @@
-import { Pool } from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
 import crypto from 'crypto';
+import { pgPool } from './database';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-const connectionString = process.env.DATABASE_URL;
-
-if (!connectionString) {
-  console.error('DATABASE_URL is not defined in .env');
-  process.exit(1);
-}
-
-const pool = new Pool({
-  connectionString,
-  ssl: { rejectUnauthorized: false }
-});
-
 export async function seedPostgres(force = true): Promise<void> {
   console.log('Seeding PostgreSQL database with The Apollo University clean dataset...');
-  const client = await pool.connect();
+  const client = await pgPool.connect();
 
   try {
     await client.query('BEGIN');
@@ -349,5 +337,5 @@ export async function seedPostgres(force = true): Promise<void> {
 }
 
 if (require.main === module) {
-  seedPostgres(true).then(() => pool.end());
+  seedPostgres(true).then(() => pgPool.end());
 }

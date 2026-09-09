@@ -33,6 +33,8 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { api } from '../../api';
+import { OfficialTimetableModal } from './OfficialTimetableModal';
+import { exportOfficialTimetableExcel } from './officialTimetableExporter';
 import {
   Activity,
   Course,
@@ -117,6 +119,7 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
   const [isCleaningData, setIsCleaningData] = useState(false);
   const [cleanConfirmAccepted, setCleanConfirmAccepted] = useState(false);
   const [cleanStatusMessage, setCleanStatusMessage] = useState<{ success: boolean; text: string } | null>(null);
+  const [isOfficialModalOpen, setIsOfficialModalOpen] = useState(false);
 
   // Year Selection & Cohort Hierarchy
   const [selectedYear, setSelectedYear] = useState<number | 'ALL'>('ALL');
@@ -884,18 +887,18 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
   return (
     <div className="space-y-4 max-w-full">
       {/* 4-Year Academic Cohort Selector Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-gradient-to-r from-[#002E4E] via-[#003B64] to-[#1B6680] text-white shadow-sm border border-[#2582A1]/30">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-white text-[#002E4E] shadow-sm border border-[#D8E6ED]">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-[#E6C200]/20 border border-[#E6C200]/40 flex items-center justify-center">
-            <GraduationCap className="w-4 h-4 text-[#E6C200]" />
+          <div className="w-8 h-8 rounded-lg bg-[#E8F4F8] border border-[#C4E2EC] flex items-center justify-center">
+            <GraduationCap className="w-4 h-4 text-[#2582A1]" />
           </div>
           <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-100">Academic Year Scope:</span>
-            <span className="text-[11px] text-slate-300 ml-2 hidden sm:inline">Focus grid & class cohorts by undergraduate year</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-[#002E4E]">Academic Year Scope:</span>
+            <span className="text-[11px] text-[#4A6375] ml-2 hidden sm:inline">Focus grid & class cohorts by undergraduate year</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 overflow-x-auto">
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
           {(['ALL', 1, 2, 3, 4] as const).map(yr => (
             <button
               key={yr}
@@ -909,10 +912,10 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
                   }
                 }
               }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 selectedYear === yr
-                  ? 'bg-[#E6C200] text-[#002E4E] shadow-sm scale-105'
-                  : 'bg-white/10 text-slate-200 hover:bg-white/20 border border-white/15'
+                  ? 'bg-[#2582A1] text-white shadow-xs'
+                  : 'bg-[#F4F8FA] text-[#4A6375] hover:bg-[#EBF3F7] border border-[#D8E6ED]'
               }`}
             >
               {yr === 'ALL' ? '🌐 All Years (1–4)' : `Year ${yr} (${yr === 1 ? '1st' : yr === 2 ? '2nd' : yr === 3 ? '3rd' : '4th'})`}
@@ -1075,9 +1078,9 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
               setAiAnalysisResult(null);
               setIsAiEditorOpen(true);
             }}
-            className="lux-btn text-xs py-1.5 px-3 bg-gradient-to-r from-[#002E4E] via-[#1B6680] to-[#2582A1] hover:opacity-95 text-white flex items-center gap-1.5 rounded-lg shadow-sm font-bold transition-all hover:scale-[1.02] border border-[#2582A1]/40"
+            className="lux-btn lux-btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5 rounded-lg shadow-sm font-bold transition-all hover:scale-[1.02] cursor-pointer"
           >
-            <Sparkles className="w-3.5 h-3.5 text-[#E6C200] animate-pulse" />
+            <Sparkles className="w-3.5 h-3.5 text-[#FDB931]" />
             <span>AI Assistant</span>
           </button>
 
@@ -1142,6 +1145,16 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
           >
             <Trash2 className="w-3.5 h-3.5 text-rose-600" />
             <span>Clean Data</span>
+          </button>
+
+          {/* Official Format Template Download & Print */}
+          <button
+            onClick={() => setIsOfficialModalOpen(true)}
+            title="Open, View, and Download in Official Institutional Template Format"
+            className="lux-btn text-xs py-1.5 px-3 bg-[#E8F4F8] border border-[#2582A1]/40 hover:bg-[#D4EAF2] text-[#002E4E] flex items-center gap-1.5 rounded-lg font-bold transition-all shadow-xs"
+          >
+            <FileText className="w-3.5 h-3.5 text-[#2582A1]" />
+            <span>Official Template Form</span>
           </button>
 
           {/* Export Suite */}
@@ -1279,17 +1292,17 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
 
       {/* Active Class / Filtered Context Banner */}
       {filterType === 'SECTION' && activeSection && (
-        <div className="p-3.5 rounded-xl bg-gradient-to-r from-[#002E4E] to-[#1B6680] text-white shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-3 border border-[#2582A1]/30">
+        <div className="p-3.5 rounded-xl bg-white text-[#002E4E] shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-3 border border-[#D8E6ED]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#E6C200] text-[#002E4E] font-extrabold flex items-center justify-center text-sm shadow-sm">
+            <div className="w-10 h-10 rounded-xl bg-[#E8F4F8] text-[#2582A1] border border-[#C4E2EC] font-extrabold flex items-center justify-center text-sm shadow-xs">
               {activeSection.name.split(' ').pop() || 'SEC'}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-sm text-white flex items-center gap-1.5">
+                <h3 className="font-extrabold text-sm text-[#002E4E] flex items-center gap-1.5">
                   <span>Class Timetable: {activeSection.name}</span>
                 </h3>
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-[#E6C200]/20 text-[#E6C200] border border-[#E6C200]/40">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-[#FFF7E6] text-[#B27B08] border border-[#FFE4A8]">
                   Year {activeSectionYear || (selectedYear !== 'ALL' ? selectedYear : 1)}
                 </span>
                 {activeSection.department_name && (
@@ -2219,7 +2232,7 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
             </div>
 
             {/* Template Download Banner */}
-            <div className="p-3.5 rounded-xl bg-gradient-to-r from-[#EBF4F7] to-[#F4F8FA] border border-[#BCE1EE] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="p-3.5 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <FileSpreadsheet className="w-5 h-5 text-[#2582A1] shrink-0" />
                 <div>
@@ -2495,8 +2508,8 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
             {/* Header */}
             <div className="flex items-center justify-between border-b border-[#D8E6ED] pb-3.5">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#002E4E] to-[#2582A1] flex items-center justify-center text-[#E6C200] shadow-sm">
-                  <Sparkles className="w-5 h-5 animate-pulse" />
+                <div className="w-9 h-9 rounded-xl bg-[#E8F4F8] border border-[#C4E2EC] flex items-center justify-center text-[#2582A1] shadow-xs">
+                  <Sparkles className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-[#002E4E]">Apollo AI Timetable Assistant</h3>
@@ -2589,7 +2602,7 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
             {aiAnalysisResult && (
               <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#BCE1EE] space-y-3.5 animate-fadeIn">
                 {/* Summary Banner */}
-                <div className="p-3 rounded-xl bg-gradient-to-r from-[#EBF4F7] to-[#F0F8FB] border border-[#BCE1EE] flex items-start gap-2.5">
+                <div className="p-3 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] flex items-start gap-2.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                   <div>
                     <div className="text-xs font-bold text-[#002E4E]">
@@ -3069,6 +3082,18 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
           </div>
         );
       })()}
+
+      {/* Official Institutional Timetable Format Modal */}
+      <OfficialTimetableModal
+        isOpen={isOfficialModalOpen}
+        onClose={() => setIsOfficialModalOpen(false)}
+        timetable={timetable}
+        section={activeSection}
+        teachers={teachers}
+        courses={courses}
+        rooms={rooms}
+        activities={activities}
+      />
     </div>
   );
 };

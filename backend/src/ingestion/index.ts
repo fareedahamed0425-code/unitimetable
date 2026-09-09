@@ -101,7 +101,7 @@ export async function processTimetableWorkbook(
     // 5. Persist to SQL if requested and valid
     let insertedCounts;
     if (persist && validationReport.isValid) {
-      insertedCounts = updateDatabaseWithTimetables(parsedTimetables, timetableId, clearExisting);
+      insertedCounts = await updateDatabaseWithTimetables(parsedTimetables, timetableId, clearExisting);
     }
 
     return {

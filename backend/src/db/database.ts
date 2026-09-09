@@ -1,237 +1,196 @@
-import Database from 'better-sqlite3';
 import dotenv from 'dotenv';
-import fs from 'fs';
 import path from 'path';
 import { Pool, PoolClient } from 'pg';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-// Robust path resolution
-const isCompiled = __dirname.includes(path.sep + 'dist' + path.sep) || __dirname.includes('/dist/');
-const backendRoot = isCompiled 
-  ? path.resolve(__dirname, '../../../../') 
-  : path.resolve(__dirname, '../../');
-
-let DB_PATH = process.env.DATABASE_PATH 
-  ? path.resolve(process.env.DATABASE_PATH)
-  : path.resolve(backendRoot, 'timetable.db');
-
-const SCHEMA_PATH = fs.existsSync(path.resolve(backendRoot, 'src/db/schema.sql'))
-  ? path.resolve(backendRoot, 'src/db/schema.sql')
-  : path.resolve(__dirname, 'schema.sql');
-
-if (process.env.VERCEL) {
-  DB_PATH = '/tmp/timetable.db';
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    'DATABASE_URL environment variable is required. Please set it in backend/.env'
+  );
 }
 
-const dbDir = path.dirname(DB_PATH);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-}
-
-export const db: Database.Database = new Database(DB_PATH, {
-  verbose: undefined
+// ──────────────────────────────────────────────────────────────
+// Neon PostgreSQL Connection Pool — sole data store
+// ──────────────────────────────────────────────────────────────
+export const pgPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  max: 20,
+  idleTimeoutMillis: 10000,
+  connectionTimeoutMillis: 30000,
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000
 });
 
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+pgPool.on('error', (err: any) => {
+  // Catch pool-level background errors (e.g. idle socket drops) so they don't crash the Node process
+  console.warn('PostgreSQL pool background notification:', err.message || err);
+});
 
-// ----------------------------------------------------
-// PostgreSQL Neon DB Connection Pool
-// ----------------------------------------------------
-export const isPostgresConfigured = Boolean(process.env.DATABASE_URL);
+// ──────────────────────────────────────────────────────────────
+// Query helpers with automatic retry on transient connection drops
+// ──────────────────────────────────────────────────────────────
 
-export const pgPool = isPostgresConfigured
-  ? new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000
-    })
-  : null;
-
-if (pgPool) {
-  pgPool.on('error', (err: any) => {
-    // Gracefully handle idle PostgreSQL client disconnects (ECONNRESET) without crashing
-    console.warn('PostgreSQL connection pool notice:', err.message || err);
-  });
+async function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Async query helper for direct PostgreSQL operations
-export async function pgQuery<T = any>(text: string, params?: any[]): Promise<T[]> {
-  if (!pgPool) return [];
-  try {
-    const client = await pgPool.connect();
+function isTransientError(err: any): boolean {
+  const msg = (err?.message || '').toLowerCase();
+  return (
+    msg.includes('connection terminated') ||
+    msg.includes('connection timeout') ||
+    msg.includes('timeout') ||
+    msg.includes('econnreset') ||
+    msg.includes('closed unexpectedly')
+  );
+}
+
+/** Run a SELECT and return all rows with automatic retry on transient connection drops. */
+export async function pgQuery<T = any>(text: string, params?: any[], retries = 2): Promise<T[]> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    let client: PoolClient | null = null;
     try {
+      client = await pgPool.connect();
       const res = await client.query(text, params);
-      return res.rows;
-    } catch (err) {
-      console.error('PostgreSQL Query Error:', err, { text, params });
+      return res.rows as T[];
+    } catch (err: any) {
+      if (attempt < retries && isTransientError(err)) {
+        console.warn(`pgQuery retry (${attempt + 1}/${retries}) after transient error:`, err.message);
+        await sleep(500 * (attempt + 1));
+        continue;
+      }
+      console.error('pgQuery error:', err.message, '\nSQL:', text.slice(0, 120));
       throw err;
     } finally {
-      client.release();
+      if (client) {
+        try {
+          client.release();
+        } catch (_) {}
+      }
     }
-  } catch (connErr: any) {
-    console.warn('PostgreSQL connection unavailable:', connErr.message);
-    return [];
   }
+  throw new Error('pgQuery: unexpected retry loop exit');
 }
 
-export async function pgExecute(text: string, params?: any[]): Promise<number> {
-  if (!pgPool) return 0;
-  try {
-    const client = await pgPool.connect();
+/** Run an INSERT / UPDATE / DELETE and return rowCount with automatic retry. */
+export async function pgExecute(text: string, params?: any[], retries = 2): Promise<number> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    let client: PoolClient | null = null;
     try {
+      client = await pgPool.connect();
       const res = await client.query(text, params);
       return res.rowCount || 0;
-    } catch (err) {
-      console.error('PostgreSQL Execute Error:', err, { text, params });
+    } catch (err: any) {
+      if (attempt < retries && isTransientError(err)) {
+        console.warn(`pgExecute retry (${attempt + 1}/${retries}) after transient error:`, err.message);
+        await sleep(500 * (attempt + 1));
+        continue;
+      }
+      console.error('pgExecute error:', err.message, '\nSQL:', text.slice(0, 120));
       throw err;
     } finally {
-      client.release();
-    }
-  } catch (connErr: any) {
-    console.warn('PostgreSQL connection unavailable:', connErr.message);
-    return 0;
-  }
-}
-
-// Convert SQLite '?' placeholders to PostgreSQL '$1, $2...'
-export function convertSqliteToPg(sql: string): string {
-  let paramIndex = 1;
-  return sql.replace(/\?/g, () => `$${paramIndex++}`);
-}
-
-// Write-through helper to persist mutations to PostgreSQL
-export function writeThroughPg(sql: string, params: any[] = []): void {
-  if (!pgPool) return;
-  try {
-    const pgSql = convertSqliteToPg(sql);
-    pgPool.query(pgSql, params).catch((err: any) => {
-      // Suppress noisy write-through warnings in background
-    });
-  } catch (e: any) {
-    // Suppress synchronous connection error
-  }
-}
-
-const SYNC_TABLES = [
-  'universities',
-  'campuses',
-  'faculties',
-  'departments',
-  'programs',
-  'academic_years',
-  'semesters',
-  'batches',
-  'sections',
-  'student_groups',
-  'student_subgroups',
-  'teachers',
-  'teacher_qualifications',
-  'students',
-  'buildings',
-  'rooms',
-  'equipment',
-  'room_equipment',
-  'time_slots',
-  'courses',
-  'course_required_equipment',
-  'activities',
-  'activity_teacher_assignments',
-  'activity_student_assignments',
-  'activity_required_equipment',
-  'activity_relations',
-  'entity_availability',
-  'preference_profiles',
-  'smart_preference_rules',
-  'timetables',
-  'timetable_entries',
-  'timetable_versions',
-  'conflicts',
-  'generation_jobs',
-  'audit_logs',
-  'fet_import_history',
-  'uploaded_files',
-  'users'
-];
-
-export async function syncFromPostgres(): Promise<boolean> {
-  if (!pgPool) return false;
-  try {
-    const client = await pgPool.connect();
-    try {
-      console.log('Synchronizing tables from Neon PostgreSQL...');
-      
-      // Initialize local SQLite tables first
-      initializeDatabase();
-
-      for (const table of SYNC_TABLES) {
+      if (client) {
         try {
-          const res = await client.query(`SELECT * FROM ${table}`);
-          if (res.rows.length > 0) {
-            // Clear local table and insert rows from PostgreSQL
-            try {
-              db.prepare(`DELETE FROM ${table}`).run();
-            } catch {}
-
-            const cols = Object.keys(res.rows[0]);
-            const placeholders = cols.map(() => '?').join(', ');
-            const insertSql = `INSERT OR REPLACE INTO ${table} (${cols.join(', ')}) VALUES (${placeholders})`;
-            const insertStmt = db.prepare(insertSql);
-
-            const tx = db.transaction((rows: any[]) => {
-              for (const row of rows) {
-                const values = cols.map(c => {
-                  const val = row[c];
-                  if (val instanceof Date) return val.toISOString();
-                  if (typeof val === 'boolean') return val ? 1 : 0;
-                  return val;
-                });
-                insertStmt.run(...values);
-              }
-            });
-            tx(res.rows);
-          }
-        } catch (tableErr: any) {
-          // Table might not exist or empty
-        }
+          client.release();
+        } catch (_) {}
       }
-      console.log('✓ Successfully synchronized state with Neon PostgreSQL.');
-      return true;
+    }
+  }
+  throw new Error('pgExecute: unexpected retry loop exit');
+}
+
+/** Run multiple statements inside a single BEGIN / COMMIT transaction with automatic retry on initial connect. */
+export async function pgTransaction<T>(
+  fn: (client: PoolClient) => Promise<T>,
+  retries = 2
+): Promise<T> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    let client: PoolClient | null = null;
+    try {
+      client = await pgPool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await fn(client);
+        await client.query('COMMIT');
+        return result;
+      } catch (err: any) {
+        try {
+          await client.query('ROLLBACK');
+        } catch (_) {}
+        throw err;
+      }
+    } catch (err: any) {
+      if (attempt < retries && isTransientError(err)) {
+        console.warn(`pgTransaction retry (${attempt + 1}/${retries}) after transient error:`, err.message);
+        await sleep(500 * (attempt + 1));
+        continue;
+      }
+      throw err;
     } finally {
-      client.release();
+      if (client) {
+        try {
+          client.release();
+        } catch (_) {}
+      }
     }
-  } catch (err: any) {
-    console.warn('Could not sync from PostgreSQL, falling back to local storage:', err.message);
-    return false;
+  }
+  throw new Error('pgTransaction: unexpected retry loop exit');
+}
+
+/** Verify connectivity and ensure the schema tables exist. */
+export async function initializePostgresSchema(retries = 3): Promise<void> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      await pgQuery('SELECT 1');
+      console.log('✓ Neon PostgreSQL connection verified.');
+
+      // Ensure core tables exist (CREATE TABLE IF NOT EXISTS is idempotent)
+      const fs = require('fs');
+      const schemaPath = path.resolve(__dirname, 'schema_postgres.sql');
+      if (fs.existsSync(schemaPath)) {
+        const schemaSql = fs.readFileSync(schemaPath, 'utf-8');
+        const stmts = schemaSql
+          .split(/;\s*(?=\n|$)/)
+          .map((s: string) => s.trim())
+          .filter((s: string) => s.length > 0 && !s.startsWith('--'));
+        const client = await pgPool.connect();
+        try {
+          for (const stmt of stmts) {
+            try {
+              await client.query(stmt);
+            } catch (_) {
+              // Ignore errors for already-existing objects
+            }
+          }
+        } finally {
+          client.release();
+        }
+        console.log('✓ PostgreSQL schema verified / created.');
+      }
+      return;
+    } catch (err: any) {
+      if (attempt < retries) {
+        console.warn(`Connection attempt ${attempt}/${retries} failed (${err.message}). Retrying in 2s...`);
+        await sleep(2000);
+      } else {
+        console.error('✗ Failed to connect to Neon PostgreSQL:', err.message);
+        throw err;
+      }
+    }
   }
 }
 
-export function initializeDatabase(): void {
-  const schemaSql = fs.readFileSync(SCHEMA_PATH, 'utf-8');
-  db.exec(schemaSql);
+/** Always true — PostgreSQL is the only DB. */
+export const isPostgresConfigured = true;
 
-  // Safe runtime migrations for SQLite cache
-  try {
-    const userCols = db.prepare('PRAGMA table_info(users)').all() as any[];
-    if (userCols.length > 0 && !userCols.some(c => c.name === 'password_hash')) {
-      db.exec('DROP TABLE users');
-      db.exec(schemaSql);
-    }
-    const slotCols = db.prepare('PRAGMA table_info(time_slots)').all() as any[];
-    if (slotCols.length > 0 && !slotCols.some(c => c.name === 'year_number')) {
-      db.exec('ALTER TABLE time_slots ADD COLUMN year_number INTEGER NOT NULL DEFAULT 0');
-    }
-  } catch (e) {
-    console.warn('SQLite migration warning:', e);
-  }
-}
-
-export function runInTransaction<T>(fn: () => T): T {
-  const transaction = db.transaction(fn);
-  return transaction();
-}
-
-export default db;
+// ──────────────────────────────────────────────────────────────
+// Legacy stubs — kept so engine files that don't use them
+// compile without changes. Nothing calls these in production.
+// ──────────────────────────────────────────────────────────────
+export const db: any = null;
+export function runInTransaction<T>(_fn: () => T): T { throw new Error('runInTransaction: use pgTransaction instead'); }
+export function writeThroughPg(_sql: string, _params?: any[]): void { /* no-op */ }
+export function syncFromPostgres(): Promise<boolean> { return Promise.resolve(true); }
+export function initializeDatabase(): void { /* no-op — schema handled by initializePostgresSchema */ }

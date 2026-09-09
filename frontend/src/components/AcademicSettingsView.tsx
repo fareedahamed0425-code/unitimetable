@@ -12,13 +12,12 @@ import {
   CheckCircle2,
   RefreshCw,
   Search,
-  Filter,
   Layers,
-  DoorOpen,
   Users,
   Calendar,
   Sparkles,
-  BookOpen
+  Shield,
+  Trash
 } from 'lucide-react';
 import { api } from '../api';
 
@@ -82,22 +81,23 @@ export const AcademicSettingsView: React.FC = () => {
 
   // Time Slots state (with Year-Specific Periods Support)
   const [slots, setSlots] = useState<TimeSlotItem[]>([]);
-  const [selectedPeriodYear, setSelectedPeriodYear] = useState<number | 'ALL'>('ALL');
+  const [selectedPeriodYear, setSelectedPeriodYear] = useState<number>(1);
+  const [selectedDayFilter, setSelectedDayFilter] = useState<number | 'MATRIX'>(0);
   const [slotSearch, setSlotSearch] = useState('');
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
   const [slotFormData, setSlotFormData] = useState({
     day: 0,
-    startTime: '08:30',
-    endTime: '09:30',
+    startTime: '09:00',
+    endTime: '09:50',
     label: '',
     isBreak: false,
-    yearNumber: 0
+    yearNumber: 1
   });
   const [showAddSlotModal, setShowAddSlotModal] = useState(false);
   const [showCopyYearModal, setShowCopyYearModal] = useState(false);
-  const [copyYearData, setCopyYearData] = useState({ sourceYear: 0, targetYear: 1 });
+  const [copyYearData, setCopyYearData] = useState({ sourceYear: 1, targetYear: 2 });
   const [showApplyAllDaysModal, setShowApplyAllDaysModal] = useState(false);
-  const [applyDaysData, setApplyDaysData] = useState({ year: 0, sourceDay: 0 });
+  const [applyDaysData, setApplyDaysData] = useState({ year: 1, sourceDay: 0 });
 
   // Venues state
   const [rooms, setRooms] = useState<RoomItem[]>([]);
@@ -144,7 +144,7 @@ export const AcademicSettingsView: React.FC = () => {
   };
 
   // Load Time Slots (with year filtering support)
-  const loadSlots = useCallback(async (yearOverride?: number | 'ALL') => {
+  const loadSlots = useCallback(async (yearOverride?: number) => {
     try {
       setLoading(true);
       const targetYear = yearOverride !== undefined ? yearOverride : selectedPeriodYear;
@@ -226,6 +226,20 @@ export const AcademicSettingsView: React.FC = () => {
     }
   };
 
+  const handlePopulateDefault = async (yearNum?: number) => {
+    const yr = yearNum || selectedPeriodYear;
+    try {
+      setLoading(true);
+      const res = await api.populateDefaultSlots(yr);
+      showToast(res.message || `Standard 8-period schedule populated for Year ${yr}`);
+      loadSlots(yr);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to populate default periods', true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleAddSlot = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -241,7 +255,7 @@ export const AcademicSettingsView: React.FC = () => {
       });
       showToast('Time period added successfully');
       setShowAddSlotModal(false);
-      setSlotFormData({ day: 0, startTime: '08:30', endTime: '09:30', label: '', isBreak: false, yearNumber: selectedPeriodYear === 'ALL' ? 0 : selectedPeriodYear });
+      setSlotFormData({ day: 0, startTime: '09:00', endTime: '09:50', label: '', isBreak: false, yearNumber: selectedPeriodYear });
       loadSlots();
     } catch (err: any) {
       showToast(err.message || 'Failed to add time period', true);
@@ -413,8 +427,9 @@ export const AcademicSettingsView: React.FC = () => {
     }
   };
 
-  // Filtered Slots
+  // Filtered Slots (by selected year, day filter, and search term)
   const filteredSlots = slots.filter(s => {
+    if (selectedDayFilter !== 'ALL' && s.day !== selectedDayFilter) return false;
     if (!slotSearch) return true;
     const term = slotSearch.toLowerCase();
     return s.dayName?.toLowerCase().includes(term) ||
@@ -434,360 +449,760 @@ export const AcademicSettingsView: React.FC = () => {
   });
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6">
+    <div className="space-y-6">
       {/* Toast Notifications */}
       {successMsg && (
-        <div className="fixed top-5 right-5 z-50 flex items-center gap-2 bg-emerald-600/95 text-white px-4 py-3 rounded-xl shadow-2xl backdrop-blur border border-emerald-400/40 animate-fade-in">
+        <div className="fixed top-5 right-5 z-50 flex items-center gap-2 bg-emerald-600 text-white px-4 py-3 rounded-xl shadow-2xl backdrop-blur border border-emerald-400/40 animate-fade-in">
           <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
           <span className="font-medium text-sm">{successMsg}</span>
         </div>
       )}
       {errorMsg && (
-        <div className="fixed top-5 right-5 z-50 flex items-center gap-2 bg-rose-600/95 text-white px-4 py-3 rounded-xl shadow-2xl backdrop-blur border border-rose-400/40 animate-fade-in">
+        <div className="fixed top-5 right-5 z-50 flex items-center gap-2 bg-rose-600 text-white px-4 py-3 rounded-xl shadow-2xl backdrop-blur border border-rose-400/40 animate-fade-in">
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
           <span className="font-medium text-sm">{errorMsg}</span>
         </div>
       )}
 
-      {/* Header Banner */}
-      <div className="mb-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 uppercase tracking-wider">
-                Admin Control Panel
+      {/* Top Header Card */}
+      <div className="lux-card p-6 bg-white border-[#D8E6ED] relative overflow-hidden">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold tracking-widest uppercase px-2.5 py-0.5 rounded-full bg-[#EBF4F7] text-[#002E4E] border border-[#D8E6ED] flex items-center gap-1.5">
+                <Shield className="w-3 h-3 text-[#2582A1]" />
+                Institutional Admin Control Panel
               </span>
-              <span className="text-slate-500 text-xs">• Super Admin Access</span>
+              <span className="text-xs text-[#4A6375]">• Super Admin Access</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-slate-400">
+            <h1 className="text-2xl font-bold text-[#002E4E] tracking-tight">
               Academic Settings & Infrastructure
             </h1>
-            <p className="text-slate-400 text-sm mt-1">
-              Configure time period slots, class venues, room capacities, and student cohort years & sections.
+            <p className="text-xs text-[#4A6375] max-w-2xl leading-relaxed">
+              Configure time period slots, class venues, room capacities, student cohort years & sections, and system reset operations.
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <button
               onClick={() => {
                 if (activeTab === 'periods') loadSlots();
                 if (activeTab === 'venues') loadVenues();
                 if (activeTab === 'cohorts') loadCohorts();
               }}
-              className="flex items-center gap-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-sm font-medium border border-slate-700 transition"
               title="Refresh Data"
+              className="p-2.5 rounded-xl border border-[#D8E6ED] bg-[#F4F8FA] text-[#002E4E] hover:bg-[#EBF4F7] transition-colors"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-indigo-400' : ''}`} />
-              <span>Refresh</span>
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-[#2582A1]' : ''}`} />
             </button>
           </div>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex items-center gap-2 mt-6 border-b border-slate-800">
+        <div className="flex items-center gap-2 mt-6 pt-4 border-t border-[#D8E6ED] overflow-x-auto">
           <button
             onClick={() => setActiveTab('periods')}
-            className={`flex items-center gap-2.5 px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
               activeTab === 'periods'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10 rounded-t-lg'
-                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                ? 'bg-[#E8F4F8] text-[#2582A1] border border-[#2582A1]'
+                : 'text-[#4A6375] hover:text-[#002E4E] hover:bg-[#F4F8FA]'
             }`}
           >
             <Clock className="w-4 h-4" />
             <span>Time Periods & Schedules</span>
-            <span className="px-2 py-0.5 rounded-full text-xs bg-slate-800 text-slate-400">{slots.length}</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-white border border-[#D8E6ED] text-[#4A6375] font-semibold">{slots.length}</span>
           </button>
 
           <button
             onClick={() => setActiveTab('venues')}
-            className={`flex items-center gap-2.5 px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
               activeTab === 'venues'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10 rounded-t-lg'
-                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                ? 'bg-[#E8F4F8] text-[#2582A1] border border-[#2582A1]'
+                : 'text-[#4A6375] hover:text-[#002E4E] hover:bg-[#F4F8FA]'
             }`}
           >
             <Building2 className="w-4 h-4" />
             <span>Venues & Classrooms</span>
-            <span className="px-2 py-0.5 rounded-full text-xs bg-slate-800 text-slate-400">{rooms.length}</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-white border border-[#D8E6ED] text-[#4A6375] font-semibold">{rooms.length}</span>
           </button>
 
           <button
             onClick={() => setActiveTab('cohorts')}
-            className={`flex items-center gap-2.5 px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
               activeTab === 'cohorts'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10 rounded-t-lg'
-                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+                ? 'bg-[#E8F4F8] text-[#2582A1] border border-[#2582A1]'
+                : 'text-[#4A6375] hover:text-[#002E4E] hover:bg-[#F4F8FA]'
             }`}
           >
             <GraduationCap className="w-4 h-4" />
             <span>Years, Batches & Sections</span>
-            <span className="px-2 py-0.5 rounded-full text-xs bg-slate-800 text-slate-400">4 Years</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-white border border-[#D8E6ED] text-[#4A6375] font-semibold">4 Years</span>
           </button>
 
           <button
             onClick={() => setActiveTab('cleanup')}
-            className={`flex items-center gap-2.5 px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
               activeTab === 'cleanup'
-                ? 'border-rose-500 text-rose-400 bg-rose-500/10 rounded-t-lg'
-                : 'border-transparent text-slate-400 hover:text-rose-300 hover:bg-slate-900/50'
+                ? 'bg-rose-50 text-rose-700 border border-rose-300'
+                : 'text-[#4A6375] hover:text-rose-600 hover:bg-rose-50/50'
             }`}
           >
-            <Trash2 className="w-4 h-4 text-rose-400" />
+            <Trash2 className="w-4 h-4 text-rose-500" />
             <span>Data Cleanup & Reset</span>
-            <span className="px-2 py-0.5 rounded-full text-xs bg-rose-950/80 text-rose-400 border border-rose-800/40">Clean</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-100 text-rose-700 font-bold border border-rose-200">Clean</span>
           </button>
         </div>
       </div>
+
       {/* ========================================================================= */}
-      {/* TAB 1: TIME PERIODS & SLOTS (YEAR-SPECIFIC & GENERAL)                     */}
+      {/* TAB 1: TIME PERIODS & SLOTS (TABULAR FORMAT WITH DAY TABS & MATRIX)     */}
       {/* ========================================================================= */}
       {activeTab === 'periods' && (
         <div className="space-y-6">
           {/* Year Selector Tabs Bar */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900/80 p-3 rounded-2xl border border-slate-800">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
-              <span className="text-xs font-semibold text-slate-400 pl-2 pr-1 shrink-0">Academic Year Timings:</span>
-              <button
-                onClick={() => {
-                  setSelectedPeriodYear('ALL');
-                  loadSlots('ALL');
-                }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
-                  selectedPeriodYear === 'ALL'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                    : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
-                }`}
-              >
-                All Years / General Default
-              </button>
-              {[1, 2, 3, 4].map(y => (
-                <button
-                  key={y}
-                  onClick={() => {
-                    setSelectedPeriodYear(y);
-                    loadSlots(y);
-                  }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
-                    selectedPeriodYear === y
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                      : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
-                  }`}
-                >
-                  <span>Year {y} (B.Tech Y{y})</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                    selectedPeriodYear === y ? 'bg-indigo-700 text-white' : 'bg-slate-800 text-slate-400'
-                  }`}>
-                    {slots.filter(s => s.yearNumber === y).length || slots.filter(s => s.yearNumber === 0).length} slots
-                  </span>
-                </button>
-              ))}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-[#D8E6ED] shadow-xs">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
+              <div className="flex items-center gap-1.5 pr-3 border-r border-[#D8E6ED] shrink-0">
+                <GraduationCap className="w-4 h-4 text-[#2582A1]" />
+                <span className="text-xs font-bold text-[#002E4E]">Academic Year:</span>
+              </div>
+              {[
+                { year: 1, label: '1st Year', sub: 'B.Tech Y1' },
+                { year: 2, label: '2nd Year', sub: 'B.Tech Y2' },
+                { year: 3, label: '3rd Year', sub: 'B.Tech Y3' },
+                { year: 4, label: '4th Year', sub: 'B.Tech Y4' },
+              ].map(y => {
+                const isSelected = selectedPeriodYear === y.year;
+                const slotCount = slots.filter(s => s.yearNumber === y.year).length;
+                return (
+                  <button
+                    key={y.year}
+                    onClick={() => {
+                      setSelectedPeriodYear(y.year);
+                      loadSlots(y.year);
+                    }}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-2 ${
+                      isSelected
+                        ? 'bg-[#2582A1] text-white shadow-sm ring-2 ring-[#2582A1]/20'
+                        : 'bg-[#F4F8FA] text-[#4A6375] hover:text-[#002E4E] hover:bg-[#E8F4F8] border border-[#D8E6ED]'
+                    }`}
+                  >
+                    <span>{y.label}</span>
+                    <span className="text-[10px] opacity-80 font-normal">({y.sub})</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                      isSelected ? 'bg-[#1C6982] text-white' : 'bg-white text-[#4A6375] border border-[#D8E6ED]'
+                    }`}>
+                      {slotCount} slots
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
-            <div className="flex items-center gap-2 self-end md:self-auto">
+            {/* Top Quick Actions */}
+            <div className="flex flex-wrap items-center gap-2">
               <button
-                onClick={() => {
-                  setApplyDaysData({ year: selectedPeriodYear === 'ALL' ? 0 : selectedPeriodYear, sourceDay: 0 });
-                  setShowApplyAllDaysModal(true);
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition"
-                title="Copy Monday's timing to Tuesday-Saturday"
+                onClick={() => handlePopulateDefault(selectedPeriodYear)}
+                disabled={loading}
+                className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold border border-emerald-200 transition"
+                title="Populate standard 8 periods + morning & lunch breaks"
               >
-                <Calendar className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Sync to All 6 Days</span>
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Populate Standard 8 Periods</span>
               </button>
               <button
                 onClick={() => {
-                  setCopyYearData({ sourceYear: selectedPeriodYear === 'ALL' ? 0 : selectedPeriodYear, targetYear: selectedPeriodYear === 1 ? 2 : 1 });
+                  setCopyYearData({ sourceYear: selectedPeriodYear, targetYear: selectedPeriodYear === 1 ? 2 : 1 });
                   setShowCopyYearModal(true);
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition"
+                className="flex items-center gap-1.5 px-3 py-2 bg-[#F4F8FA] hover:bg-[#E8F4F8] text-[#002E4E] rounded-xl text-xs font-bold border border-[#D8E6ED] transition"
                 title="Duplicate timings to another year"
               >
-                <Layers className="w-3.5 h-3.5 text-purple-400" />
+                <Layers className="w-3.5 h-3.5 text-purple-600" />
                 <span>Copy Year Schedule</span>
               </button>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-800/80 backdrop-blur">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                value={slotSearch}
-                onChange={e => setSlotSearch(e.target.value)}
-                placeholder="Search by day, time (e.g. 09:30), or label..."
-                className="w-full pl-10 pr-4 py-2 bg-slate-950/80 border border-slate-700/80 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-              />
+          {/* DAY SELECTION TABS & VIEW SWITCHER (Tabular Structure) */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-[#D8E6ED] shadow-xs">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+              <span className="text-xs font-bold text-[#002E4E] pr-2 shrink-0">Schedule Day:</span>
+              {daysOfWeek.map((d, idx) => {
+                const daySlots = slots.filter(s => s.yearNumber === selectedPeriodYear && s.day === idx);
+                const isSelected = selectedDayFilter === idx;
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedDayFilter(idx)}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+                      isSelected
+                        ? 'bg-[#002E4E] text-white shadow-xs'
+                        : 'bg-[#F4F8FA] text-[#4A6375] hover:bg-[#E8F4F8] hover:text-[#002E4E] border border-[#D8E6ED]'
+                    }`}
+                  >
+                    <span>{d}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      isSelected ? 'bg-[#2582A1] text-white' : 'bg-white text-[#4A6375] border border-[#D8E6ED]'
+                    }`}>
+                      {daySlots.length}
+                    </span>
+                  </button>
+                );
+              })}
+
+              <button
+                onClick={() => setSelectedDayFilter('MATRIX')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ml-1 ${
+                  selectedDayFilter === 'MATRIX'
+                    ? 'bg-[#2582A1] text-white shadow-xs'
+                    : 'bg-[#E8F4F8] text-[#2582A1] hover:bg-[#D4EAF2] border border-[#2582A1]/30'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Weekly Grid Matrix</span>
+              </button>
             </div>
-            <button
-              onClick={() => {
-                setSlotFormData(prev => ({
-                  ...prev,
-                  yearNumber: selectedPeriodYear === 'ALL' ? 0 : selectedPeriodYear
-                }));
-                setShowAddSlotModal(true);
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/20 transition"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Time Period {selectedPeriodYear !== 'ALL' ? `(Year ${selectedPeriodYear})` : ''}</span>
-            </button>
+
+            <div className="flex items-center gap-2 self-end sm:self-auto">
+              {typeof selectedDayFilter === 'number' && (
+                <button
+                  onClick={() => {
+                    setApplyDaysData({ year: selectedPeriodYear, sourceDay: selectedDayFilter });
+                    setShowApplyAllDaysModal(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-[#E8F4F8] hover:bg-[#D4EAF2] text-[#002E4E] rounded-xl text-xs font-bold border border-[#2582A1]/30 transition"
+                  title={`Copy ${daysOfWeek[selectedDayFilter]}'s timings across all 6 days`}
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-[#2582A1]" />
+                  <span>Sync {daysOfWeek[selectedDayFilter]} to All Days</span>
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  setSlotFormData({
+                    day: typeof selectedDayFilter === 'number' ? selectedDayFilter : 0,
+                    startTime: '09:00',
+                    endTime: '09:50',
+                    label: '',
+                    isBreak: false,
+                    yearNumber: selectedPeriodYear
+                  });
+                  setShowAddSlotModal(true);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-[#2582A1] hover:bg-[#1C6982] text-white rounded-xl text-xs font-bold shadow-xs transition shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Period</span>
+              </button>
+            </div>
           </div>
 
-          {/* Time Slots Table */}
-          <div className="bg-slate-900/40 rounded-2xl border border-slate-800 overflow-hidden">
+          {/* VIEW 1: DAILY TABULAR SCHEDULE TABLE (Clean, structured list for the chosen day) */}
+          {typeof selectedDayFilter === 'number' && (() => {
+            const currentDaySlots = slots
+              .filter(s => s.yearNumber === selectedPeriodYear && s.day === selectedDayFilter)
+              .sort((a, b) => a.periodIndex - b.periodIndex);
+
+            return (
+              <div className="bg-white rounded-2xl border border-[#D8E6ED] overflow-hidden shadow-xs">
+                {/* Table Header Banner */}
+                <div className="p-4 bg-[#F8FBFC] border-b border-[#D8E6ED] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-[#002E4E] text-sm flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-[#2582A1]" />
+                      <span>{daysOfWeek[selectedDayFilter]} Period Timings — Year {selectedPeriodYear}</span>
+                    </h3>
+                    <p className="text-xs text-[#4A6375] mt-0.5">
+                      Configure class durations, break intervals, and lunch timings. Click any value to edit directly.
+                    </p>
+                  </div>
+
+                  <span className="text-xs font-bold text-[#002E4E] bg-white px-3 py-1 rounded-lg border border-[#D8E6ED] self-start sm:self-auto">
+                    {currentDaySlots.length} Configured Periods
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-[#F4F8FA] text-[#4A6375] uppercase text-[11px] font-bold tracking-wider border-b border-[#D8E6ED]">
+                      <tr>
+                        <th className="px-5 py-3.5 w-16 text-center">Period</th>
+                        <th className="px-5 py-3.5">Period Name / Label</th>
+                        <th className="px-5 py-3.5">Start Time</th>
+                        <th className="px-5 py-3.5">End Time</th>
+                        <th className="px-5 py-3.5 text-center">Duration</th>
+                        <th className="px-5 py-3.5">Period Type / Status</th>
+                        <th className="px-5 py-3.5 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#D8E6ED]">
+                      {currentDaySlots.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-16 text-center">
+                            <div className="max-w-md mx-auto space-y-3">
+                              <Clock className="w-8 h-8 text-[#2582A1] mx-auto opacity-50" />
+                              <h4 className="font-bold text-sm text-[#002E4E]">
+                                No Periods Configured on {daysOfWeek[selectedDayFilter]} for Year {selectedPeriodYear}
+                              </h4>
+                              <p className="text-xs text-[#4A6375]">
+                                Click below to populate standard 8 periods or add a custom period slot.
+                              </p>
+                              <div className="flex items-center justify-center gap-2 pt-2">
+                                <button
+                                  onClick={() => handlePopulateDefault(selectedPeriodYear)}
+                                  className="px-3.5 py-1.5 bg-[#2582A1] hover:bg-[#1C6982] text-white rounded-xl text-xs font-bold shadow-xs transition"
+                                >
+                                  ⚡ Populate Standard 8 Periods
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setSlotFormData({
+                                      day: selectedDayFilter,
+                                      startTime: '09:00',
+                                      endTime: '09:50',
+                                      label: 'Period 1',
+                                      isBreak: false,
+                                      yearNumber: selectedPeriodYear
+                                    });
+                                    setShowAddSlotModal(true);
+                                  }}
+                                  className="px-3.5 py-1.5 bg-[#F4F8FA] hover:bg-[#E8F4F8] text-[#002E4E] border border-[#D8E6ED] rounded-xl text-xs font-bold transition"
+                                >
+                                  + Add Period
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        currentDaySlots.map((s) => {
+                          const isEditing = editingSlotId === s.id;
+                          const isLunch = s.label?.toLowerCase().includes('lunch');
+                          return (
+                            <tr key={s.id} className="hover:bg-[#F8FBFC] transition">
+                              {/* Period Index */}
+                              <td className="px-5 py-3.5 text-center">
+                                <span className="px-2.5 py-1 rounded-lg text-xs font-bold font-mono bg-[#E8F4F8] text-[#2582A1] border border-[#C4E2EC]">
+                                  P{s.periodIndex + 1}
+                                </span>
+                              </td>
+
+                              {/* Label */}
+                              <td className="px-5 py-3.5">
+                                {isEditing ? (
+                                  <input
+                                    type="text"
+                                    defaultValue={s.label || ''}
+                                    id={`slot-label-${s.id}`}
+                                    placeholder="e.g. Period 1, Tea Break, Lunch Break"
+                                    className="bg-white border border-[#2582A1] rounded-lg px-2.5 py-1 text-xs font-bold text-[#002E4E] focus:outline-none w-full max-w-[200px]"
+                                  />
+                                ) : (
+                                  <span className="font-bold text-[#002E4E] text-xs">
+                                    {s.label || `Period ${s.periodIndex + 1}`}
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Start Time */}
+                              <td className="px-5 py-3.5">
+                                {isEditing ? (
+                                  <input
+                                    type="time"
+                                    defaultValue={s.startTime}
+                                    id={`slot-start-${s.id}`}
+                                    className="bg-white border border-[#2582A1] rounded-lg px-2 py-1 text-xs font-mono font-bold text-[#002E4E] focus:outline-none"
+                                  />
+                                ) : (
+                                  <span className="font-mono text-[#002E4E] font-bold text-xs bg-[#F4F8FA] px-2 py-1 rounded-md border border-[#D8E6ED]">
+                                    {s.startTime}
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* End Time */}
+                              <td className="px-5 py-3.5">
+                                {isEditing ? (
+                                  <input
+                                    type="time"
+                                    defaultValue={s.endTime}
+                                    id={`slot-end-${s.id}`}
+                                    className="bg-white border border-[#2582A1] rounded-lg px-2 py-1 text-xs font-mono font-bold text-[#002E4E] focus:outline-none"
+                                  />
+                                ) : (
+                                  <span className="font-mono text-[#002E4E] font-bold text-xs bg-[#F4F8FA] px-2 py-1 rounded-md border border-[#D8E6ED]">
+                                    {s.endTime}
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Duration calculation */}
+                              <td className="px-5 py-3.5 text-center text-xs text-[#4A6375] font-medium font-mono">
+                                {(() => {
+                                  try {
+                                    const [sh, sm] = (s.startTime || '09:00').split(':').map(Number);
+                                    const [eh, em] = (s.endTime || '09:50').split(':').map(Number);
+                                    const mins = (eh * 60 + em) - (sh * 60 + sm);
+                                    return mins > 0 ? `${mins} min` : '50 min';
+                                  } catch {
+                                    return '50 min';
+                                  }
+                                })()}
+                              </td>
+
+                              {/* Type / Break Status */}
+                              <td className="px-5 py-3.5">
+                                {isEditing ? (
+                                  <label className="flex items-center gap-1.5 text-xs text-[#002E4E] font-bold cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      id={`slot-break-${s.id}`}
+                                      defaultChecked={s.isBreak}
+                                      className="rounded bg-white border-[#D8E6ED] text-[#2582A1] w-4 h-4 cursor-pointer"
+                                    />
+                                    <span>Is Break / Lunch</span>
+                                  </label>
+                                ) : (
+                                  <span className={`px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1.5 ${
+                                    s.isBreak
+                                      ? isLunch
+                                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                        : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                      : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  }`}>
+                                    <span className={`w-2 h-2 rounded-full ${s.isBreak ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                                    {s.isBreak ? (isLunch ? 'Lunch Break' : (s.label || 'Break / Recess')) : 'Academic Class'}
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Actions */}
+                              <td className="px-5 py-3.5 text-right">
+                                {isEditing ? (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      onClick={() => {
+                                        const start = (document.getElementById(`slot-start-${s.id}`) as HTMLInputElement)?.value;
+                                        const end = (document.getElementById(`slot-end-${s.id}`) as HTMLInputElement)?.value;
+                                        const label = (document.getElementById(`slot-label-${s.id}`) as HTMLInputElement)?.value;
+                                        const isBreak = (document.getElementById(`slot-break-${s.id}`) as HTMLInputElement)?.checked;
+                                        handleSaveSlot(s.id, { startTime: start, endTime: end, label, isBreak, yearNumber: selectedPeriodYear });
+                                      }}
+                                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-xs"
+                                      title="Save Changes"
+                                    >
+                                      <Save className="w-3.5 h-3.5" />
+                                      <span>Save</span>
+                                    </button>
+                                    <button
+                                      onClick={() => setEditingSlotId(null)}
+                                      className="px-2.5 py-1.5 bg-[#F4F8FA] text-[#4A6375] hover:bg-[#E8F4F8] rounded-lg text-xs font-medium transition"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      onClick={() => setEditingSlotId(s.id)}
+                                      className="p-1.5 text-[#4A6375] hover:text-[#2582A1] hover:bg-[#E8F4F8] rounded-lg transition"
+                                      title="Edit Timing"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteSlot(s.id)}
+                                      className="p-1.5 text-[#4A6375] hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                      title="Delete Period"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* VIEW 2: WEEKLY FULL MATRIX GRID (Days x Periods 2D Table) */}
+          {selectedDayFilter === 'MATRIX' && (
+            <div className="bg-white rounded-2xl border border-[#D8E6ED] overflow-hidden shadow-xs">
+              <div className="p-4 bg-[#F8FBFC] border-b border-[#D8E6ED] flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-[#002E4E] text-sm flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-[#2582A1]" />
+                    <span>Weekly 6-Day Timetable Matrix — Year {selectedPeriodYear}</span>
+                  </h3>
+                  <p className="text-xs text-[#4A6375] mt-0.5">
+                    Complete overview of Monday to Saturday period bounds and break timings.
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-center text-xs">
+                  <thead>
+                    <tr className="bg-[#002E4E] text-white font-bold">
+                      <th className="px-4 py-3 border-r border-[#1C5C7A] text-left w-24">Day</th>
+                      {[0, 1, 2, 3, 4, 5, 6, 7, 8].map(p => (
+                        <th key={p} className="px-3 py-3 border-r border-[#1C5C7A] text-[11px] min-w-[110px]">
+                          Period {p + 1}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#D8E6ED]">
+                    {daysOfWeek.map((dayName, dIdx) => {
+                      const daySlots = slots
+                        .filter(s => s.yearNumber === selectedPeriodYear && s.day === dIdx)
+                        .sort((a, b) => a.periodIndex - b.periodIndex);
+
+                      return (
+                        <tr key={dIdx} className="hover:bg-[#F8FBFC] transition">
+                          <td className="px-4 py-3 font-bold text-[#002E4E] text-left bg-[#F4F8FA] border-r border-[#D8E6ED]">
+                            {dayName}
+                          </td>
+                          {[0, 1, 2, 3, 4, 5, 6, 7, 8].map(pIdx => {
+                            const slot = daySlots.find(s => s.periodIndex === pIdx);
+                            if (!slot) {
+                              return (
+                                <td key={pIdx} className="px-2 py-3 text-center text-[#829BA8] border-r border-[#D8E6ED] text-[10px]">
+                                  -
+                                </td>
+                              );
+                            }
+                            const isLunch = slot.label?.toLowerCase().includes('lunch');
+                            return (
+                              <td key={pIdx} className="px-2 py-2 border-r border-[#D8E6ED]">
+                                <div className={`p-1.5 rounded-lg border text-left space-y-0.5 ${
+                                  slot.isBreak
+                                    ? isLunch
+                                      ? 'bg-amber-50 border-amber-200 text-amber-900'
+                                      : 'bg-amber-50/60 border-amber-200 text-amber-800'
+                                    : 'bg-[#E8F4F8]/60 border-[#C4E2EC] text-[#002E4E]'
+                                }`}>
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-mono font-bold text-[10px]">{slot.startTime} - {slot.endTime}</span>
+                                    <button
+                                      onClick={() => {
+                                        setSelectedDayFilter(dIdx);
+                                        setEditingSlotId(slot.id);
+                                      }}
+                                      className="text-[#4A6375] hover:text-[#2582A1]"
+                                      title="Edit Timing"
+                                    >
+                                      <Edit2 className="w-2.5 h-2.5" />
+                                    </button>
+                                  </div>
+                                  <div className="text-[10px] truncate font-medium">
+                                    {slot.label || (slot.isBreak ? 'Break' : `Period ${pIdx + 1}`)}
+                                  </div>
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      /* TAB 2: VENUES & CLASSROOMS (TABULAR LIST FORMAT)                          */
+      /* ========================================================================= */
+      {activeTab === 'venues' && (
+        <div className="space-y-6">
+          {/* Top Controls Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-[#D8E6ED] shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1 max-w-xl">
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#4A6375]" />
+                <input
+                  type="text"
+                  value={roomSearch}
+                  onChange={e => setRoomSearch(e.target.value)}
+                  placeholder="Search rooms by name, code, or building..."
+                  className="w-full pl-10 pr-4 py-2 bg-white border border-[#D8E6ED] rounded-xl text-sm text-[#002E4E] placeholder-[#829BA8] focus:outline-none focus:border-[#2582A1]"
+                />
+              </div>
+
+              <select
+                value={selectedBuildingFilter}
+                onChange={e => setSelectedBuildingFilter(e.target.value)}
+                className="bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-sm font-bold text-[#002E4E] focus:outline-none focus:border-[#2582A1]"
+              >
+                <option value="all">All Buildings ({rooms.length} rooms)</option>
+                {buildings.map(b => (
+                  <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowAddBuildingModal(true)}
+                className="px-3.5 py-2 bg-[#F4F8FA] hover:bg-[#E8F4F8] text-[#002E4E] border border-[#D8E6ED] rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+              >
+                <Building2 className="w-4 h-4 text-[#2582A1]" />
+                <span>Add Building</span>
+              </button>
+              <button
+                onClick={() => setShowAddRoomModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-[#2582A1] hover:bg-[#1C6982] text-white rounded-xl text-xs font-bold shadow-xs transition"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Classroom / Lab</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Venues & Classrooms Table */}
+          <div className="bg-white rounded-2xl border border-[#D8E6ED] overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="bg-slate-900/90 text-slate-400 uppercase text-xs font-semibold tracking-wider border-b border-slate-800">
+                <thead className="bg-[#F4F8FA] text-[#4A6375] uppercase text-[11px] font-bold tracking-wider border-b border-[#D8E6ED]">
                   <tr>
-                    <th className="px-6 py-4">Applicable Year</th>
-                    <th className="px-6 py-4">Day</th>
-                    <th className="px-6 py-4">Period</th>
-                    <th className="px-6 py-4">Start Time</th>
-                    <th className="px-6 py-4">End Time</th>
-                    <th className="px-6 py-4">Type / Label</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
+                    <th className="px-5 py-3.5 w-12 text-center">#</th>
+                    <th className="px-5 py-3.5">Room Name</th>
+                    <th className="px-5 py-3.5">Room Code</th>
+                    <th className="px-5 py-3.5">Building / Block</th>
+                    <th className="px-5 py-3.5">Room Type</th>
+                    <th className="px-5 py-3.5 text-center">Seating Capacity</th>
+                    <th className="px-5 py-3.5 text-center">Floor</th>
+                    <th className="px-5 py-3.5 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {filteredSlots.length === 0 ? (
+                <tbody className="divide-y divide-[#D8E6ED]">
+                  {filteredRooms.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
-                        {loading ? 'Loading time slots...' : 'No time periods found for this year. Add periods using the button above or copy from another year.'}
+                      <td colSpan={8} className="px-6 py-16 text-center text-[#4A6375]">
+                        <div className="max-w-md mx-auto space-y-3">
+                          <Building2 className="w-8 h-8 text-[#2582A1] mx-auto opacity-50" />
+                          <h3 className="font-bold text-sm text-[#002E4E]">No Classrooms or Venues Found</h3>
+                          <p className="text-xs text-[#4A6375]">
+                            {loading ? 'Loading rooms...' : 'Click "Add Classroom / Lab" above to configure your university teaching venues.'}
+                          </p>
+                        </div>
                       </td>
                     </tr>
                   ) : (
-                    filteredSlots.map(s => {
-                      const isEditing = editingSlotId === s.id;
-                      const isYearSpecific = (s.yearNumber || 0) > 0;
+                    filteredRooms.map((r, idx) => {
+                      const isEditing = editingRoomId === r.id;
                       return (
-                        <tr key={s.id} className="hover:bg-slate-800/30 transition">
-                          <td className="px-6 py-4">
+                        <tr key={r.id} className="hover:bg-[#F8FBFC] transition">
+                          <td className="px-5 py-3.5 text-center text-xs text-[#4A6375] font-bold font-mono">
+                            {idx + 1}
+                          </td>
+                          <td className="px-5 py-3.5">
                             {isEditing ? (
-                              <select
-                                id={`slot-year-${s.id}`}
-                                defaultValue={s.yearNumber || 0}
-                                className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200"
-                              >
-                                <option value={0}>All Years (Default)</option>
-                                <option value={1}>Year 1</option>
-                                <option value={2}>Year 2</option>
-                                <option value={3}>Year 3</option>
-                                <option value={4}>Year 4</option>
-                              </select>
+                              <input
+                                type="text"
+                                defaultValue={r.name}
+                                id={`room-name-${r.id}`}
+                                className="bg-white border border-[#2582A1] rounded-lg px-2.5 py-1 text-xs font-bold text-[#002E4E] focus:outline-none"
+                              />
                             ) : (
-                              <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
-                                isYearSpecific
-                                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                                  : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
-                              }`}>
-                                {isYearSpecific ? `Year ${s.yearNumber}` : 'All Years (Default)'}
+                              <span className="font-bold text-[#002E4E] text-xs">{r.name}</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                defaultValue={r.code}
+                                id={`room-code-${r.id}`}
+                                className="bg-white border border-[#2582A1] rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-[#2582A1] focus:outline-none"
+                              />
+                            ) : (
+                              <span className="font-mono text-xs font-bold text-[#2582A1] bg-[#E8F4F8] px-2 py-0.5 rounded border border-[#D8E6ED]">
+                                {r.code}
                               </span>
                             )}
                           </td>
-                          <td className="px-6 py-4">
-                            <span className="font-semibold text-slate-200">{s.dayName || daysOfWeek[s.day] || `Day ${s.day}`}</span>
-                            <span className="ml-2 text-xs text-slate-500">Day {s.day}</span>
+                          <td className="px-5 py-3.5">
+                            <span className="text-xs text-[#002E4E] flex items-center gap-1.5 font-medium">
+                              <Building2 className="w-3.5 h-3.5 text-[#2582A1]" />
+                              {r.buildingName || 'Apollo Tower'}
+                            </span>
                           </td>
-                          <td className="px-6 py-4 text-slate-400 font-mono text-xs">
-                            P{s.periodIndex + 1}
+                          <td className="px-5 py-3.5">
+                            <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold inline-flex items-center ${
+                              r.type === 'COMPUTER_LAB'
+                                ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                : r.type === 'LECTURE_HALL'
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            }`}>
+                              {r.type?.replace('_', ' ')}
+                            </span>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-5 py-3.5 text-center">
                             {isEditing ? (
                               <input
-                                type="time"
-                                defaultValue={s.startTime}
-                                id={`slot-start-${s.id}`}
-                                className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200"
+                                type="number"
+                                defaultValue={r.capacity}
+                                id={`room-cap-${r.id}`}
+                                className="w-16 bg-white border border-[#2582A1] rounded-lg px-2 py-1 text-xs text-center font-bold text-[#002E4E] focus:outline-none"
                               />
                             ) : (
-                              <span className="font-mono text-indigo-300 font-medium">{s.startTime}</span>
+                              <span className="font-bold text-xs text-[#002E4E] bg-[#F4F8FA] px-2.5 py-1 rounded-lg border border-[#D8E6ED]">
+                                {r.capacity} Seats
+                              </span>
                             )}
                           </td>
-                          <td className="px-6 py-4">
-                            {isEditing ? (
-                              <input
-                                type="time"
-                                defaultValue={s.endTime}
-                                id={`slot-end-${s.id}`}
-                                className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200"
-                              />
-                            ) : (
-                              <span className="font-mono text-indigo-300 font-medium">{s.endTime}</span>
-                            )}
+                          <td className="px-5 py-3.5 text-center text-xs font-bold text-[#4A6375]">
+                            {r.floor || 1}F
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-5 py-3.5 text-right">
                             {isEditing ? (
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="text"
-                                  defaultValue={s.label || ''}
-                                  id={`slot-label-${s.id}`}
-                                  placeholder="e.g. Regular / Lunch Break"
-                                  className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200"
-                                />
-                                <label className="flex items-center gap-1 text-xs text-slate-400">
-                                  <input
-                                    type="checkbox"
-                                    id={`slot-break-${s.id}`}
-                                    defaultChecked={s.isBreak}
-                                    className="rounded bg-slate-950 border-slate-700 text-indigo-600"
-                                  />
-                                  <span>Break</span>
-                                </label>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                  s.isBreak
-                                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                }}`}>
-                                  {s.isBreak ? 'Break / Interval' : 'Academic Class'}
-                                </span>
-                                {s.label && <span className="text-xs text-slate-400">({s.label})</span>}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            {isEditing ? (
-                              <div className="flex items-center justify-end gap-2">
+                              <div className="flex items-center justify-end gap-1.5">
                                 <button
                                   onClick={() => {
-                                    const start = (document.getElementById(`slot-start-${s.id}`) as HTMLInputElement)?.value;
-                                    const end = (document.getElementById(`slot-end-${s.id}`) as HTMLInputElement)?.value;
-                                    const label = (document.getElementById(`slot-label-${s.id}`) as HTMLInputElement)?.value;
-                                    const isBreak = (document.getElementById(`slot-break-${s.id}`) as HTMLInputElement)?.checked;
-                                    const yearNum = Number((document.getElementById(`slot-year-${s.id}`) as HTMLSelectElement)?.value || 0);
-                                    handleSaveSlot(s.id, { startTime: start, endTime: end, label, isBreak, yearNumber: yearNum });
+                                    const name = (document.getElementById(`room-name-${r.id}`) as HTMLInputElement)?.value;
+                                    const code = (document.getElementById(`room-code-${r.id}`) as HTMLInputElement)?.value;
+                                    const cap = parseInt((document.getElementById(`room-cap-${r.id}`) as HTMLInputElement)?.value, 10);
+                                    handleSaveRoom(r.id, { name, code, capacity: cap });
                                   }}
-                                  className="p-1.5 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 rounded-lg border border-emerald-500/30 transition"
+                                  className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-xs"
                                   title="Save Changes"
                                 >
-                                  <Save className="w-4 h-4" />
+                                  <Save className="w-3.5 h-3.5" />
+                                  <span>Save</span>
                                 </button>
                                 <button
-                                  onClick={() => setEditingSlotId(null)}
-                                  className="p-1.5 bg-slate-800 text-slate-400 hover:bg-slate-700 rounded-lg transition"
-                                  title="Cancel"
+                                  onClick={() => setEditingRoomId(null)}
+                                  className="px-2.5 py-1.5 bg-[#F4F8FA] text-[#4A6375] hover:bg-[#E8F4F8] rounded-lg text-xs font-medium transition"
                                 >
-                                  <X className="w-4 h-4" />
+                                  Cancel
                                 </button>
                               </div>
                             ) : (
-                              <div className="flex items-center justify-end gap-2">
+                              <div className="flex items-center justify-end gap-1.5">
                                 <button
-                                  onClick={() => setEditingSlotId(s.id)}
-                                  className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition"
-                                  title="Edit Timing"
+                                  onClick={() => setEditingRoomId(r.id)}
+                                  className="p-1.5 text-[#4A6375] hover:text-[#2582A1] hover:bg-[#E8F4F8] rounded-lg transition"
+                                  title="Edit Venue"
                                 >
                                   <Edit2 className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => handleDeleteSlot(s.id)}
-                                  className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
-                                  title="Delete Period"
+                                  onClick={() => handleDeleteRoom(r.id)}
+                                  className="p-1.5 text-[#4A6375] hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                  title="Delete Venue"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -806,197 +1221,50 @@ export const AcademicSettingsView: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 2: VENUES & ROOMS                                                    */}
-      {/* ========================================================================= */}
-      {activeTab === 'venues' && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-800/80 backdrop-blur">
-            <div className="flex flex-wrap items-center gap-3 flex-1">
-              <div className="relative flex-1 min-w-[200px] max-w-sm">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  value={roomSearch}
-                  onChange={e => setRoomSearch(e.target.value)}
-                  placeholder="Search rooms (e.g. Lab 3, 204, LH-1)..."
-                  className="w-full pl-10 pr-4 py-2 bg-slate-950/80 border border-slate-700/80 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Filter className="w-4 h-4 text-slate-400" />
-                <select
-                  value={selectedBuildingFilter}
-                  onChange={e => setSelectedBuildingFilter(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="all">All Buildings</option>
-                  {buildings.map(b => (
-                    <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowAddBuildingModal(true)}
-                className="flex items-center gap-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-sm font-medium border border-slate-700 transition"
-              >
-                <Building2 className="w-4 h-4" />
-                <span>Add Building</span>
-              </button>
-              <button
-                onClick={() => setShowAddRoomModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/20 transition"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Venue/Room</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Rooms Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredRooms.length === 0 ? (
-              <div className="col-span-full py-12 text-center text-slate-500 bg-slate-900/30 rounded-2xl border border-slate-800">
-                No venues or rooms found matching criteria.
-              </div>
-            ) : (
-              filteredRooms.map(r => {
-                const isEditing = editingRoomId === r.id;
-                return (
-                  <div
-                    key={r.id}
-                    className="p-5 bg-slate-900/50 rounded-2xl border border-slate-800/80 hover:border-slate-700 transition relative flex flex-col justify-between group"
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-3 mb-2">
-                        <div className="flex items-center gap-2">
-                          <div className={`p-2 rounded-xl ${
-                            r.type === 'LAB'
-                              ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
-                              : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
-                          }`}>
-                            <DoorOpen className="w-4 h-4" />
-                          </div>
-                          <div>
-                            {isEditing ? (
-                              <input
-                                type="text"
-                                defaultValue={r.name}
-                                id={`room-name-${r.id}`}
-                                className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-sm font-semibold text-slate-100"
-                              />
-                            ) : (
-                              <h3 className="font-bold text-slate-100 text-base">{r.name}</h3>
-                            )}
-                            <p className="text-xs text-slate-400">Code: {r.code || r.name}</p>
-                          </div>
-                        </div>
-
-                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase ${
-                          r.type === 'LAB' ? 'bg-purple-500/20 text-purple-300' : 'bg-indigo-500/20 text-indigo-300'
-                        }`}>
-                          {r.type}
-                        </span>
-                      </div>
-
-                      <div className="mt-4 pt-3 border-t border-slate-800/60 grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <span className="text-slate-500 block">Building</span>
-                          <span className="font-medium text-slate-300">{r.buildingName || 'Main Block'}</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-500 block">Capacity</span>
-                          {isEditing ? (
-                            <input
-                              type="number"
-                              defaultValue={r.capacity || 60}
-                              id={`room-cap-${r.id}`}
-                              className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-slate-200"
-                            />
-                          ) : (
-                            <span className="font-semibold text-emerald-400">{r.capacity || 60} Students</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
-                      <span className="text-slate-500">Floor: {r.floor || 1}</span>
-                      <div className="flex items-center gap-2">
-                        {isEditing ? (
-                          <>
-                            <button
-                              onClick={() => {
-                                const name = (document.getElementById(`room-name-${r.id}`) as HTMLInputElement)?.value;
-                                const cap = parseInt((document.getElementById(`room-cap-${r.id}`) as HTMLInputElement)?.value || '60', 10);
-                                handleSaveRoom(r.id, { name, capacity: cap });
-                              }}
-                              className="p-1.5 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 rounded-lg border border-emerald-500/30"
-                              title="Save"
-                            >
-                              <Save className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => setEditingRoomId(null)}
-                              className="p-1.5 bg-slate-800 text-slate-400 hover:bg-slate-700 rounded-lg"
-                              title="Cancel"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => setEditingRoomId(r.id)}
-                              className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg"
-                              title="Edit Room"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteRoom(r.id)}
-                              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg"
-                              title="Delete Room"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB 3: STUDENT COHORTS & YEARS                                            */}
+      {/* TAB 3: YEARS, BATCHES & SECTIONS (TABULAR LIST FORMAT)                     */}
       {/* ========================================================================= */}
       {activeTab === 'cohorts' && (
         <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-800/80 backdrop-blur">
-            <div>
-              <h2 className="text-base font-bold text-slate-200">University Cohorts (Years 1 to 4)</h2>
-              <p className="text-xs text-slate-400">Manage Sections, student numbers, and semester groups for all academic years.</p>
+          {/* Top Controls Bar */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-[#D8E6ED] shadow-xs">
+            {/* Year Selector Tabs */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
+              <div className="flex items-center gap-1.5 pr-2 border-r border-[#D8E6ED] shrink-0">
+                <GraduationCap className="w-4 h-4 text-[#2582A1]" />
+                <span className="text-xs font-bold text-[#002E4E]">Year Cohort:</span>
+              </div>
+              {[
+                { year: 1, label: '1st Year', sub: 'B.Tech Y1' },
+                { year: 2, label: '2nd Year', sub: 'B.Tech Y2' },
+                { year: 3, label: '3rd Year', sub: 'B.Tech Y3' },
+                { year: 4, label: '4th Year', sub: 'B.Tech Y4' }
+              ].map(y => (
+                <button
+                  key={y.year}
+                  onClick={() => setSelectedYearTab(y.year)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+                    selectedYearTab === y.year
+                      ? 'bg-[#002E4E] text-white shadow-xs'
+                      : 'bg-[#F4F8FA] text-[#4A6375] hover:text-[#002E4E] hover:bg-[#E8F4F8] border border-[#D8E6ED]'
+                  }`}
+                >
+                  <span>{y.label}</span>
+                  <span className="text-[10px] opacity-80">({y.sub})</span>
+                </button>
+              ))}
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowAddBatchModal(true)}
-                className="flex items-center gap-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-sm font-medium border border-slate-700 transition"
+                className="px-3.5 py-2 bg-[#F4F8FA] hover:bg-[#E8F4F8] text-[#002E4E] border border-[#D8E6ED] rounded-xl text-xs font-bold transition flex items-center gap-1.5"
               >
-                <Layers className="w-4 h-4" />
-                <span>Add Year Batch</span>
+                <Layers className="w-4 h-4 text-[#2582A1]" />
+                <span>Add Batch</span>
               </button>
               <button
                 onClick={() => setShowAddSectionModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/20 transition"
+                className="flex items-center gap-2 px-4 py-2 bg-[#2582A1] hover:bg-[#1C6982] text-white rounded-xl text-xs font-bold shadow-xs transition"
               >
                 <Plus className="w-4 h-4" />
                 <span>Add Section</span>
@@ -1004,334 +1272,392 @@ export const AcademicSettingsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Year Tabs */}
-          <div className="flex items-center gap-2">
-            {[1, 2, 3, 4].map(yr => (
-              <button
-                key={yr}
-                onClick={() => setSelectedYearTab(yr)}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
-                  selectedYearTab === yr
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
-                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
-                }`}
-              >
-                Year {yr} ({yr === 1 ? '1st Year' : yr === 2 ? '2nd Year' : yr === 3 ? '3rd Year' : '4th Year / Final'})
-              </button>
-            ))}
+          {/* Sections & Cohorts Table */}
+          <div className="bg-white rounded-2xl border border-[#D8E6ED] overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-[#F4F8FA] text-[#4A6375] uppercase text-[11px] font-bold tracking-wider border-b border-[#D8E6ED]">
+                  <tr>
+                    <th className="px-5 py-3.5 w-12 text-center">#</th>
+                    <th className="px-5 py-3.5">Academic Year</th>
+                    <th className="px-5 py-3.5">Department / Branch</th>
+                    <th className="px-5 py-3.5">Section Name</th>
+                    <th className="px-5 py-3.5 text-center">Semester</th>
+                    <th className="px-5 py-3.5 text-center">Student Strength</th>
+                    <th className="px-5 py-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#D8E6ED]">
+                  {(() => {
+                    const sectionsForYear = (cohortsData?.sections || []).filter((s: any) => {
+                      if (!s.start_year) return true;
+                      const calculatedYear = Math.max(1, Math.min(4, new Date().getFullYear() - s.start_year + 1));
+                      return calculatedYear === selectedYearTab;
+                    });
+
+                    const displaySections: any[] = sectionsForYear.length > 0
+                      ? sectionsForYear
+                      : hierarchy
+                          .filter(h => h.year === selectedYearTab)
+                          .flatMap(h => h.departments.flatMap(d => (d.sections || []).map(sec => ({
+                            ...sec,
+                            dept_name: d.deptName,
+                            year: h.year
+                          }))));
+
+                    if (displaySections.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-16 text-center text-[#4A6375]">
+                            <div className="max-w-md mx-auto space-y-3">
+                              <GraduationCap className="w-8 h-8 text-[#2582A1] mx-auto opacity-50" />
+                              <h3 className="font-bold text-sm text-[#002E4E]">
+                                No Sections Configured for Year {selectedYearTab}
+                              </h3>
+                              <p className="text-xs text-[#4A6375]">
+                                Click "Add Section" above to register class cohorts and sections for this academic year.
+                              </p>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return displaySections.map((sec, idx) => {
+                      const isEditing = editingSectionId === sec.id;
+                      return (
+                        <tr key={sec.id} className="hover:bg-[#F8FBFC] transition">
+                          <td className="px-5 py-3.5 text-center text-xs text-[#4A6375] font-bold font-mono">
+                            {idx + 1}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-[#E8F4F8] text-[#2582A1] border border-[#C4E2EC]">
+                              {selectedYearTab === 1 ? '1st Year' : selectedYearTab === 2 ? '2nd Year' : selectedYearTab === 3 ? '3rd Year' : '4th Year'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className="font-bold text-[#002E4E] text-xs">
+                              {sec.dept_name || sec.program_name || 'Computer Science & Engineering'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                defaultValue={sec.name}
+                                id={`sec-name-${sec.id}`}
+                                className="bg-white border border-[#2582A1] rounded-lg px-2.5 py-1 text-xs font-bold text-[#002E4E] focus:outline-none"
+                              />
+                            ) : (
+                              <span className="font-bold text-[#002E4E] text-xs bg-[#F4F8FA] px-2.5 py-1 rounded-lg border border-[#D8E6ED]">
+                                {sec.name}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5 text-center">
+                            <span className="text-xs font-bold text-[#4A6375]">
+                              {sec.semester_name || (sec.semester_number ? `Semester ${sec.semester_number}` : `Sem ${selectedYearTab * 2 - 1}`)}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-center">
+                            {isEditing ? (
+                              <input
+                                type="number"
+                                defaultValue={sec.studentCount || sec.student_count || 60}
+                                id={`sec-count-${sec.id}`}
+                                className="w-16 bg-white border border-[#2582A1] rounded-lg px-2 py-1 text-xs text-center font-bold text-[#002E4E] focus:outline-none"
+                              />
+                            ) : (
+                              <span className="font-bold text-xs text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 inline-flex items-center gap-1">
+                                <Users className="w-3 h-3 text-emerald-600" />
+                                {sec.studentCount || sec.student_count || 60} Students
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5 text-right">
+                            {isEditing ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    const name = (document.getElementById(`sec-name-${sec.id}`) as HTMLInputElement)?.value;
+                                    const count = parseInt((document.getElementById(`sec-count-${sec.id}`) as HTMLInputElement)?.value, 10);
+                                    handleSaveSection(sec.id, { name, studentCount: count });
+                                  }}
+                                  className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-xs"
+                                  title="Save Changes"
+                                >
+                                  <Save className="w-3.5 h-3.5" />
+                                  <span>Save</span>
+                                </button>
+                                <button
+                                  onClick={() => setEditingSectionId(null)}
+                                  className="px-2.5 py-1.5 bg-[#F4F8FA] text-[#4A6375] hover:bg-[#E8F4F8] rounded-lg text-xs font-medium transition"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => setEditingSectionId(sec.id)}
+                                  className="p-1.5 text-[#4A6375] hover:text-[#2582A1] hover:bg-[#E8F4F8] rounded-lg transition"
+                                  title="Edit Section"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteSection(sec.id)}
+                                  className="p-1.5 text-[#4A6375] hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                  title="Delete Section"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
           </div>
-
-          {/* Hierarchy Cards for Selected Year */}
-          {(() => {
-            const currentYearData = Array.isArray(hierarchy) ? hierarchy.find(h => h.year === selectedYearTab) : null;
-            const departments = currentYearData?.departments || [];
-
-            if (departments.length === 0) {
-              return (
-                <div className="py-16 text-center text-slate-500 bg-slate-900/30 rounded-2xl border border-slate-800">
-                  <GraduationCap className="w-10 h-10 mx-auto mb-2 text-slate-600" />
-                  <p className="font-semibold text-slate-400">No sections found for Year {selectedYearTab}</p>
-                  <p className="text-xs text-slate-500 mt-1">Use the "Add Section" or "Add Year Batch" button above to register cohorts for this year.</p>
-                </div>
-              );
-            }
-
-            return (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {departments.map(dept => (
-                  <div key={dept.deptId} className="bg-slate-900/50 rounded-2xl border border-slate-800 p-5 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <BookOpen className="w-4 h-4 text-indigo-400" />
-                        <h3 className="font-bold text-slate-200 text-sm">{dept.deptName}</h3>
-                      </div>
-                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-800 text-indigo-400">
-                        {dept.sections.length} Sections
-                      </span>
-                    </div>
-
-                    <div className="space-y-2">
-                      {dept.sections.map(sec => {
-                        const isEditing = editingSectionId === sec.id;
-                        return (
-                          <div
-                            key={sec.id}
-                            className="p-3 bg-slate-950/70 rounded-xl border border-slate-800/80 flex items-center justify-between gap-3"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 font-bold text-xs flex items-center justify-center border border-indigo-500/20">
-                                {sec.name.split('-').pop() || sec.name}
-                              </div>
-                              <div>
-                                {isEditing ? (
-                                  <input
-                                    type="text"
-                                    defaultValue={sec.name}
-                                    id={`sec-name-${sec.id}`}
-                                    className="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-xs text-slate-100 font-semibold"
-                                  />
-                                ) : (
-                                  <span className="font-semibold text-slate-200 text-sm">{sec.name}</span>
-                                )}
-                                <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500">
-                                  <Users className="w-3 h-3" />
-                                  {isEditing ? (
-                                    <input
-                                      type="number"
-                                      defaultValue={sec.studentCount || 60}
-                                      id={`sec-count-${sec.id}`}
-                                      className="w-16 bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-slate-200"
-                                    />
-                                  ) : (
-                                    <span>{sec.studentCount || 60} Students</span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              {isEditing ? (
-                                <>
-                                  <button
-                                    onClick={() => {
-                                      const name = (document.getElementById(`sec-name-${sec.id}`) as HTMLInputElement)?.value;
-                                      const studentCount = parseInt((document.getElementById(`sec-count-${sec.id}`) as HTMLInputElement)?.value || '60', 10);
-                                      handleSaveSection(sec.id, { name, studentCount });
-                                    }}
-                                    className="p-1.5 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 rounded-lg border border-emerald-500/30"
-                                    title="Save"
-                                  >
-                                    <Save className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() => setEditingSectionId(null)}
-                                    className="p-1.5 bg-slate-800 text-slate-400 hover:bg-slate-700 rounded-lg"
-                                    title="Cancel"
-                                  >
-                                    <X className="w-3.5 h-3.5" />
-                                  </button>
-                                </>
-                              ) : (
-                                <>
-                                  <button
-                                    onClick={() => setEditingSectionId(sec.id)}
-                                    className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition"
-                                    title="Edit Section"
-                                  >
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteSection(sec.id)}
-                                    className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition"
-                                    title="Delete Section"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 4: SYSTEM DATA CLEANUP & RESET                                        */}
+      {/* TAB 4: DATA CLEANUP & RESET (STRUCTURED TABLE FORMAT)                      */}
       {/* ========================================================================= */}
       {activeTab === 'cleanup' && (
         <div className="space-y-6">
-          <div className="bg-slate-900/60 p-5 rounded-2xl border border-rose-900/40 backdrop-blur space-y-2">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400">
-                <Trash2 className="w-5 h-5" />
+          <div className="bg-rose-50/70 p-5 rounded-2xl border border-rose-200 space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center">
+                <Trash2 className="w-4 h-4" />
               </div>
-              <div>
-                <h2 className="text-lg font-bold text-slate-100">System Data Management & Cleanup Console</h2>
-                <p className="text-xs text-slate-400">
-                  Selectively clear active timetables, purge schedule entries across semesters, or perform a total factory reset.
-                </p>
-              </div>
+              <h2 className="text-lg font-bold text-rose-900">
+                System Data Management & Cleanup Console
+              </h2>
+            </div>
+            <p className="text-xs text-rose-800 leading-relaxed">
+              Selectively clear active timetables, purge multi-semester schedule entries, or perform a total factory reset in structured list format.
+            </p>
+          </div>
+
+          {/* Cleanup Operations Table */}
+          <div className="bg-white rounded-2xl border border-[#D8E6ED] overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-[#F4F8FA] text-[#4A6375] uppercase text-[11px] font-bold tracking-wider border-b border-[#D8E6ED]">
+                  <tr>
+                    <th className="px-5 py-3.5">Cleanup Operation / Scope</th>
+                    <th className="px-5 py-3.5">Target Data Removed</th>
+                    <th className="px-5 py-3.5">Preserved Entities</th>
+                    <th className="px-5 py-3.5 text-center">Safety Level</th>
+                    <th className="px-5 py-3.5 text-right">Execute Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#D8E6ED]">
+                  {/* Row 1: Active Grid */}
+                  <tr className="hover:bg-[#F8FBFC] transition">
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-lg">🧹</span>
+                        <div>
+                          <strong className="text-xs font-bold text-[#002E4E] block">Clear Active Timetable Grid Only</strong>
+                          <span className="text-[11px] text-[#4A6375]">Removes scheduled slots for active draft</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-xs text-[#4A6375]">
+                      Active timetable sessions, placements & conflict markers
+                    </td>
+                    <td className="px-5 py-4 text-xs text-emerald-700 font-medium">
+                      ✓ Teachers, Courses, Rooms, Sections & Time Periods
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-50 text-cyan-800 border border-cyan-200">
+                        Safe Reset
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <button
+                        onClick={() => handleExecuteCleanup('TIMETABLE_ENTRIES_ONLY')}
+                        disabled={isCleaning}
+                        className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ml-auto cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Clear Grid</span>
+                      </button>
+                    </td>
+                  </tr>
+
+                  {/* Row 2: All Timetables */}
+                  <tr className="hover:bg-[#F8FBFC] transition">
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-lg">🗑️</span>
+                        <div>
+                          <strong className="text-xs font-bold text-[#002E4E] block">Clear All Timetable Schedules</strong>
+                          <span className="text-[11px] text-[#4A6375]">Multi-semester timetable purge</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-xs text-[#4A6375]">
+                      All timetables, versions & session history across all 4 years
+                    </td>
+                    <td className="px-5 py-4 text-xs text-emerald-700 font-medium">
+                      ✓ Teachers, Courses, Rooms, Sections & Time Periods
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                        Moderate
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <button
+                        onClick={() => handleExecuteCleanup('ALL_TIMETABLES_AND_SESSIONS')}
+                        disabled={isCleaning}
+                        className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ml-auto cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Clear All Timetables</span>
+                      </button>
+                    </td>
+                  </tr>
+
+                  {/* Row 3: Curriculum & Activities */}
+                  <tr className="hover:bg-[#F8FBFC] transition">
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-lg">📦</span>
+                        <div>
+                          <strong className="text-xs font-bold text-[#002E4E] block">Clear Timetables & Curriculum Subjects</strong>
+                          <span className="text-[11px] text-[#4A6375]">Pre-import clean for new Excel upload</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-xs text-[#4A6375]">
+                      Timetables, course subjects, activity assignments & imported data
+                    </td>
+                    <td className="px-5 py-4 text-xs text-emerald-700 font-medium">
+                      ✓ Teachers, Rooms, Departments & Time Periods
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-800 border border-purple-200">
+                        Pre-Import
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <button
+                        onClick={() => handleExecuteCleanup('CLEAR_CURRICULUM_AND_ACTIVITIES')}
+                        disabled={isCleaning}
+                        className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ml-auto cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Clear Curriculum</span>
+                      </button>
+                    </td>
+                  </tr>
+
+                  {/* Row 4: Total Factory Reset */}
+                  <tr className="hover:bg-rose-50/40 transition bg-rose-50/20">
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-lg text-rose-600">⚡</span>
+                        <div>
+                          <strong className="text-xs font-bold text-rose-950 block">Complete Factory Clean Reset</strong>
+                          <span className="text-[11px] text-rose-800">Total database wipe to clean baseline</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-xs text-rose-800">
+                      Wipes all custom data and resets to baseline
+                    </td>
+                    <td className="px-5 py-4 text-xs text-emerald-700 font-medium">
+                      ✓ Core 4 Departments (CSE, AI&DS, AI&ML, Cyber Security) & Super Admin
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                        Total Wipe
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <button
+                        onClick={() => handleExecuteCleanup('FULL_FACTORY_RESET')}
+                        disabled={isCleaning}
+                        className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs ml-auto cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Factory Reset</span>
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[
-              {
-                id: 'TIMETABLE_ENTRIES_ONLY',
-                title: '🧹 Clear Active Timetable Grid Only',
-                desc: 'Removes all scheduled classes and conflicts for the active timetable. Master faculties, courses, rooms, and sections remain intact.',
-                badge: 'Recommended for Re-scheduling',
-                badgeColor: 'bg-sky-950/80 text-sky-400 border-sky-800'
-              },
-              {
-                id: 'ALL_TIMETABLES_AND_SESSIONS',
-                title: '🗑️ Clear All Timetable Schedules',
-                desc: 'Purges all scheduled classes across all 4 academic years, semesters, and saved draft timetable versions.',
-                badge: 'Multi-Semester Wipe',
-                badgeColor: 'bg-amber-950/80 text-amber-400 border-amber-800'
-              },
-              {
-                id: 'CLEAR_CURRICULUM_AND_ACTIVITIES',
-                title: '📦 Clear Timetables & Curriculum Subjects',
-                desc: 'Clears all scheduled sessions, course entries, subject assignments, and uploaded Excel data so you can import a fresh Excel file cleanly.',
-                badge: 'Pre-Import Clean',
-                badgeColor: 'bg-purple-950/80 text-purple-400 border-purple-800'
-              },
-              {
-                id: 'FULL_FACTORY_RESET',
-                title: '⚡ Complete Factory Clean Reset (Total Wipe)',
-                desc: 'Wipes all uploaded data and resets the entire database to the clean 4-department baseline (CSE, AI&DS, AI&ML, Cyber Security) with official time slots and Super Admin credentials.',
-                badge: 'Factory Default',
-                badgeColor: 'bg-rose-950/80 text-rose-400 border-rose-800'
-              }
-            ].map(opt => (
-              <div
-                key={opt.id}
-                onClick={() => setCleanScope(opt.id as any)}
-                className={`p-5 rounded-2xl border transition-all cursor-pointer space-y-3 ${
-                  cleanScope === opt.id
-                    ? 'bg-rose-950/30 border-rose-500 ring-2 ring-rose-500/30 shadow-lg shadow-rose-950/40'
-                    : 'bg-slate-900/40 border-slate-800 hover:border-slate-700 hover:bg-slate-900/70'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="font-bold text-sm text-slate-100">{opt.title}</div>
-                  <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${opt.badgeColor}`}>
-                    {opt.badge}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 leading-relaxed">{opt.desc}</p>
-                <div className="pt-2 flex items-center justify-between border-t border-slate-800/80">
-                  <span className="text-[11px] font-semibold text-slate-500">
-                    {cleanScope === opt.id ? '✓ Selected for Execution' : 'Click to select this scope'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (confirm(`Are you sure you want to execute: "${opt.title}"?`)) {
-                        handleExecuteCleanup(opt.id);
-                      }
-                    }}
-                    disabled={isCleaning}
-                    className="px-3 py-1 bg-rose-900/50 hover:bg-rose-800 text-rose-200 rounded-lg text-xs font-semibold border border-rose-700/50 transition flex items-center gap-1"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    <span>Quick Clean</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Safety Checkbox & Main Action Bar */}
-          <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 space-y-4">
-            <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-800/50 text-amber-300 text-xs">
-              <label className="flex items-start gap-2.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={cleanConfirmAccepted}
-                  onChange={e => setCleanConfirmAccepted(e.target.checked)}
-                  className="mt-0.5 rounded bg-slate-950 border-amber-600 text-rose-600 focus:ring-rose-500"
-                />
-                <span className="leading-relaxed">
-                  <strong>Permanent Data Deletion Acknowledgment:</strong> I understand that executing this cleanup will permanently wipe the selected database tables and cannot be undone.
-                </span>
-              </label>
+          {/* Feedback message */}
+          {cleanupFeedback && (
+            <div
+              className={`p-4 rounded-xl border text-xs font-bold flex items-center gap-2.5 ${
+                cleanupFeedback.success
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-rose-50 border-rose-200 text-rose-800'
+              }`}
+            >
+              {cleanupFeedback.success ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+              )}
+              <span>{cleanupFeedback.text}</span>
             </div>
-
-            {cleanupFeedback && (
-              <div
-                className={`p-4 rounded-xl border text-xs font-semibold flex items-center gap-2.5 ${
-                  cleanupFeedback.success
-                    ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
-                    : 'bg-rose-950/40 border-rose-800/60 text-rose-300'
-                }`}
-              >
-                {cleanupFeedback.success ? (
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-                )}
-                <span>{cleanupFeedback.text}</span>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between pt-2">
-              <div className="text-xs text-slate-400">
-                Active Selection: <strong className="text-rose-400">{cleanScope}</strong>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleExecuteCleanup()}
-                disabled={isCleaning || !cleanConfirmAccepted}
-                className="px-6 py-2.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold shadow-lg shadow-rose-600/30 flex items-center gap-2 transition"
-              >
-                {isCleaning ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Executing Cleanup...</span>
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-4 h-4" />
-                    <span>Execute Selected Cleanup</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+          )}
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: ADD TIME PERIOD                                                    */}
+      {/* MODALS SECTION                                                            */}
       {/* ========================================================================= */}
-      {/* ========================================================================= */}
-      {/* MODAL: ADD TIME PERIOD                                                    */}
-      {/* ========================================================================= */}
+
+      {/* MODAL: ADD TIME SLOT */}
       {showAddSlotModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5 animate-scale-in">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-[#002E4E]/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#D8E6ED] rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-[#D8E6ED] pb-3">
               <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-indigo-400" />
-                <h3 className="font-bold text-lg text-slate-100">Add Time Period</h3>
+                <Clock className="w-5 h-5 text-[#2582A1]" />
+                <h3 className="font-bold text-lg text-[#002E4E]">Add Time Period</h3>
               </div>
-              <button onClick={() => setShowAddSlotModal(false)} className="text-slate-400 hover:text-slate-200">
+              <button onClick={() => setShowAddSlotModal(false)} className="text-[#4A6375] hover:text-[#002E4E]">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleAddSlot} className="space-y-4 text-sm">
               <div>
-                <label className="block text-slate-400 text-xs font-semibold mb-1">Applicable Academic Year</label>
+                <label className="block text-[#4A6375] text-xs font-bold mb-1">Academic Year</label>
                 <select
                   value={slotFormData.yearNumber}
                   onChange={e => setSlotFormData({ ...slotFormData, yearNumber: parseInt(e.target.value, 10) })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                  className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm font-bold focus:border-[#2582A1]"
                 >
-                  <option value={0}>All Years (General Default Schedule)</option>
-                  <option value={1}>Year 1 (B.Tech Year 1)</option>
-                  <option value={2}>Year 2 (B.Tech Year 2)</option>
-                  <option value={3}>Year 3 (B.Tech Year 3)</option>
-                  <option value={4}>Year 4 (B.Tech Year 4)</option>
+                  <option value={1}>1st Year (B.Tech Year 1)</option>
+                  <option value={2}>2nd Year (B.Tech Year 2)</option>
+                  <option value={3}>3rd Year (B.Tech Year 3)</option>
+                  <option value={4}>4th Year (B.Tech Year 4)</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-slate-400 text-xs font-semibold mb-1">Day of Week</label>
+                <label className="block text-[#4A6375] text-xs font-bold mb-1">Day of Week</label>
                 <select
                   value={slotFormData.day}
                   onChange={e => setSlotFormData({ ...slotFormData, day: parseInt(e.target.value, 10) })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                  className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                 >
                   {daysOfWeek.map((dayName, idx) => (
                     <option key={idx} value={idx}>{dayName}</option>
@@ -1341,35 +1667,35 @@ export const AcademicSettingsView: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 text-xs font-semibold mb-1">Start Time</label>
+                  <label className="block text-[#4A6375] text-xs font-bold mb-1">Start Time</label>
                   <input
                     type="time"
                     required
                     value={slotFormData.startTime}
                     onChange={e => setSlotFormData({ ...slotFormData, startTime: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                    className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 text-xs font-semibold mb-1">End Time</label>
+                  <label className="block text-[#4A6375] text-xs font-bold mb-1">End Time</label>
                   <input
                     type="time"
                     required
                     value={slotFormData.endTime}
                     onChange={e => setSlotFormData({ ...slotFormData, endTime: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                    className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-400 text-xs font-semibold mb-1">Optional Label</label>
+                <label className="block text-[#4A6375] text-xs font-bold mb-1">Period Label (Optional)</label>
                 <input
                   type="text"
                   placeholder="e.g. Period 1, Afternoon Lab, Lunch Break"
                   value={slotFormData.label}
                   onChange={e => setSlotFormData({ ...slotFormData, label: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                  className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                 />
               </div>
 
@@ -1379,22 +1705,22 @@ export const AcademicSettingsView: React.FC = () => {
                   id="isBreakSlot"
                   checked={slotFormData.isBreak}
                   onChange={e => setSlotFormData({ ...slotFormData, isBreak: e.target.checked })}
-                  className="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-indigo-500"
+                  className="rounded bg-white border-[#D8E6ED] text-[#2582A1]"
                 />
-                <label htmlFor="isBreakSlot" className="text-xs text-slate-300">Is this a break / interval period?</label>
+                <label htmlFor="isBreakSlot" className="text-xs text-[#002E4E] font-medium cursor-pointer">Is this a break / interval period?</label>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#D8E6ED]">
                 <button
                   type="button"
                   onClick={() => setShowAddSlotModal(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium"
+                  className="px-4 py-2 bg-[#F4F8FA] hover:bg-[#E8F4F8] text-[#4A6375] rounded-xl text-xs font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/20"
+                  className="px-4 py-2 bg-[#2582A1] hover:bg-[#1C6982] text-white rounded-xl text-xs font-bold shadow-xs"
                 >
                   Create Period
                 </button>
@@ -1404,71 +1730,66 @@ export const AcademicSettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL: COPY YEAR SCHEDULE                                                 */}
-      {/* ========================================================================= */}
+      {/* MODAL: COPY YEAR SCHEDULE */}
       {showCopyYearModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5 animate-scale-in">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-[#002E4E]/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#D8E6ED] rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5 animate-scale-in">
+            <div className="flex items-center justify-between border-b border-[#D8E6ED] pb-3">
               <div className="flex items-center gap-2">
-                <Layers className="w-5 h-5 text-purple-400" />
-                <h3 className="font-bold text-lg text-slate-100">Copy Period Timings Between Years</h3>
+                <Layers className="w-5 h-5 text-purple-600" />
+                <h3 className="font-bold text-lg text-[#002E4E]">Copy Period Timings Between Years</h3>
               </div>
-              <button onClick={() => setShowCopyYearModal(false)} className="text-slate-400 hover:text-slate-200">
+              <button onClick={() => setShowCopyYearModal(false)} className="text-[#4A6375] hover:text-[#002E4E]">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleCopyYear} className="space-y-4 text-sm">
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-[#4A6375] leading-relaxed">
                 Duplicate all time slots & period boundaries from one year to another so you don't have to enter them manually for each year.
               </p>
 
               <div>
-                <label className="block text-slate-400 text-xs font-semibold mb-1">Source Schedule</label>
+                <label className="block text-[#4A6375] text-xs font-bold mb-1">Source Schedule</label>
                 <select
                   value={copyYearData.sourceYear}
                   onChange={e => setCopyYearData({ ...copyYearData, sourceYear: parseInt(e.target.value, 10) })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                  className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm font-bold focus:border-[#2582A1]"
                 >
-                  <option value={0}>All Years (General Default)</option>
-                  <option value={1}>Year 1 Schedule</option>
-                  <option value={2}>Year 2 Schedule</option>
-                  <option value={3}>Year 3 Schedule</option>
-                  <option value={4}>Year 4 Schedule</option>
+                  <option value={1}>1st Year Schedule</option>
+                  <option value={2}>2nd Year Schedule</option>
+                  <option value={3}>3rd Year Schedule</option>
+                  <option value={4}>4th Year Schedule</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-slate-400 text-xs font-semibold mb-1">Target Academic Year</label>
+                <label className="block text-[#4A6375] text-xs font-bold mb-1">Target Academic Year</label>
                 <select
                   value={copyYearData.targetYear}
                   onChange={e => setCopyYearData({ ...copyYearData, targetYear: parseInt(e.target.value, 10) })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                  className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm font-bold focus:border-[#2582A1]"
                 >
-                  <option value={1}>Year 1 (B.Tech Year 1)</option>
-                  <option value={2}>Year 2 (B.Tech Year 2)</option>
-                  <option value={3}>Year 3 (B.Tech Year 3)</option>
-                  <option value={4}>Year 4 (B.Tech Year 4)</option>
-                  <option value={0}>All Years (General Default)</option>
+                  <option value={1}>1st Year (B.Tech Year 1)</option>
+                  <option value={2}>2nd Year (B.Tech Year 2)</option>
+                  <option value={3}>3rd Year (B.Tech Year 3)</option>
+                  <option value={4}>4th Year (B.Tech Year 4)</option>
                 </select>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#D8E6ED]">
                 <button
                   type="button"
                   onClick={() => setShowCopyYearModal(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium"
+                  className="px-4 py-2 bg-[#F4F8FA] hover:bg-[#E8F4F8] text-[#4A6375] rounded-xl text-xs font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-purple-600/20"
+                  className="px-4 py-2 bg-[#2582A1] hover:bg-[#1C6982] text-white rounded-xl text-xs font-bold shadow-xs"
                 >
-                  {loading ? 'Copying...' : 'Copy Timings Now'}
+                  Duplicate Timings
                 </button>
               </div>
             </form>
@@ -1476,48 +1797,45 @@ export const AcademicSettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL: SYNC TO ALL 6 DAYS                                                 */}
-      {/* ========================================================================= */}
+      {/* MODAL: APPLY ALL DAYS */}
       {showApplyAllDaysModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5 animate-scale-in">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-[#002E4E]/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#D8E6ED] rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5 animate-scale-in">
+            <div className="flex items-center justify-between border-b border-[#D8E6ED] pb-3">
               <div className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-indigo-400" />
-                <h3 className="font-bold text-lg text-slate-100">Sync Day's Timings to All 6 Days</h3>
+                <Calendar className="w-5 h-5 text-[#2582A1]" />
+                <h3 className="font-bold text-lg text-[#002E4E]">Sync Timings Across All 6 Days</h3>
               </div>
-              <button onClick={() => setShowApplyAllDaysModal(false)} className="text-slate-400 hover:text-slate-200">
+              <button onClick={() => setShowApplyAllDaysModal(false)} className="text-[#4A6375] hover:text-[#002E4E]">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleApplyAllDays} className="space-y-4 text-sm">
-              <p className="text-xs text-slate-400">
-                Take the periods and intervals of one day and mirror them across Monday, Tuesday, Wednesday, Thursday, Friday, and Saturday.
+              <p className="text-xs text-[#4A6375] leading-relaxed">
+                Take the period slots from the chosen source day and automatically duplicate them to all 6 days (Monday through Saturday).
               </p>
 
               <div>
-                <label className="block text-slate-400 text-xs font-semibold mb-1">Target Academic Year</label>
+                <label className="block text-[#4A6375] text-xs font-bold mb-1">Target Academic Year</label>
                 <select
                   value={applyDaysData.year}
                   onChange={e => setApplyDaysData({ ...applyDaysData, year: parseInt(e.target.value, 10) })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                  className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm font-bold focus:border-[#2582A1]"
                 >
-                  <option value={0}>All Years (General Default)</option>
-                  <option value={1}>Year 1</option>
-                  <option value={2}>Year 2</option>
-                  <option value={3}>Year 3</option>
-                  <option value={4}>Year 4</option>
+                  <option value={1}>1st Year (B.Tech Year 1)</option>
+                  <option value={2}>2nd Year (B.Tech Year 2)</option>
+                  <option value={3}>3rd Year (B.Tech Year 3)</option>
+                  <option value={4}>4th Year (B.Tech Year 4)</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-slate-400 text-xs font-semibold mb-1">Source Template Day</label>
+                <label className="block text-[#4A6375] text-xs font-bold mb-1">Source Day Timings to Copy</label>
                 <select
                   value={applyDaysData.sourceDay}
                   onChange={e => setApplyDaysData({ ...applyDaysData, sourceDay: parseInt(e.target.value, 10) })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                  className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                 >
                   {daysOfWeek.map((dayName, idx) => (
                     <option key={idx} value={idx}>{dayName}</option>
@@ -1525,20 +1843,19 @@ export const AcademicSettingsView: React.FC = () => {
                 </select>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#D8E6ED]">
                 <button
                   type="button"
                   onClick={() => setShowApplyAllDaysModal(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium"
+                  className="px-4 py-2 bg-[#F4F8FA] hover:bg-[#E8F4F8] text-[#4A6375] rounded-xl text-xs font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/20"
+                  className="px-4 py-2 bg-[#2582A1] hover:bg-[#1C6982] text-white rounded-xl text-xs font-bold shadow-xs"
                 >
-                  {loading ? 'Syncing...' : 'Sync to All 6 Days'}
+                  Apply to All 6 Days
                 </button>
               </div>
             </form>
@@ -1546,18 +1863,16 @@ export const AcademicSettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL: ADD VENUE / ROOM                                                   */}
-      {/* ========================================================================= */}
+      {/* MODAL: ADD ROOM */}
       {showAddRoomModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-[#002E4E]/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#D8E6ED] rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-[#D8E6ED] pb-3">
               <div className="flex items-center gap-2">
-                <DoorOpen className="w-5 h-5 text-indigo-400" />
-                <h3 className="font-bold text-lg text-slate-100">Add Venue / Room</h3>
+                <Building2 className="w-5 h-5 text-[#2582A1]" />
+                <h3 className="font-bold text-lg text-[#002E4E]">Add Classroom / Laboratory</h3>
               </div>
-              <button onClick={() => setShowAddRoomModal(false)} className="text-slate-400 hover:text-slate-200">
+              <button onClick={() => setShowAddRoomModal(false)} className="text-[#4A6375] hover:text-[#002E4E]">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1565,34 +1880,36 @@ export const AcademicSettingsView: React.FC = () => {
             <form onSubmit={handleAddRoom} className="space-y-4 text-sm">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 text-xs font-semibold mb-1">Room Name</label>
+                  <label className="block text-[#4A6375] text-xs font-bold mb-1">Room Name</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Lab 4, LH-201"
+                    placeholder="e.g. CR-401, AI Lab 2"
                     value={roomFormData.name}
                     onChange={e => setRoomFormData({ ...roomFormData, name: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                    className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 text-xs font-semibold mb-1">Room Code</label>
+                  <label className="block text-[#4A6375] text-xs font-bold mb-1">Room Code</label>
                   <input
                     type="text"
-                    placeholder="e.g. L4, 201"
+                    required
+                    placeholder="e.g. CR-401"
                     value={roomFormData.code}
                     onChange={e => setRoomFormData({ ...roomFormData, code: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                    className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-400 text-xs font-semibold mb-1">Building</label>
+                <label className="block text-[#4A6375] text-xs font-bold mb-1">Building</label>
                 <select
+                  required
                   value={roomFormData.buildingId}
                   onChange={e => setRoomFormData({ ...roomFormData, buildingId: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                  className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                 >
                   {buildings.map(b => (
                     <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
@@ -1602,42 +1919,53 @@ export const AcademicSettingsView: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 text-xs font-semibold mb-1">Room Type</label>
-                  <select
-                    value={roomFormData.type}
-                    onChange={e => setRoomFormData({ ...roomFormData, type: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
-                  >
-                    <option value="CLASSROOM">Classroom / Lecture</option>
-                    <option value="LAB">Computer / Science Lab</option>
-                    <option value="SEMINAR">Seminar Hall</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 text-xs font-semibold mb-1">Capacity</label>
+                  <label className="block text-[#4A6375] text-xs font-bold mb-1">Seating Capacity</label>
                   <input
                     type="number"
-                    min="1"
+                    min="10"
                     value={roomFormData.capacity}
                     onChange={e => setRoomFormData({ ...roomFormData, capacity: parseInt(e.target.value, 10) || 60 })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                    className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[#4A6375] text-xs font-bold mb-1">Floor Level</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={roomFormData.floor}
+                    onChange={e => setRoomFormData({ ...roomFormData, floor: parseInt(e.target.value, 10) || 1 })}
+                    className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+              <div>
+                <label className="block text-[#4A6375] text-xs font-bold mb-1">Room Type</label>
+                <select
+                  value={roomFormData.type}
+                  onChange={e => setRoomFormData({ ...roomFormData, type: e.target.value })}
+                  className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
+                >
+                  <option value="CLASSROOM">Classroom (Regular Lecture)</option>
+                  <option value="COMPUTER_LAB">Computer Laboratory</option>
+                  <option value="LECTURE_HALL">Auditorium / Seminar Hall</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#D8E6ED]">
                 <button
                   type="button"
                   onClick={() => setShowAddRoomModal(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium"
+                  className="px-4 py-2 bg-[#F4F8FA] hover:bg-[#E8F4F8] text-[#4A6375] rounded-xl text-xs font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/20"
+                  className="px-4 py-2 bg-[#2582A1] hover:bg-[#1C6982] text-white rounded-xl text-xs font-bold shadow-xs"
                 >
-                  Add Room
+                  Create Venue
                 </button>
               </div>
             </form>
@@ -1645,58 +1973,56 @@ export const AcademicSettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL: ADD BUILDING                                                       */}
-      {/* ========================================================================= */}
+      {/* MODAL: ADD BUILDING */}
       {showAddBuildingModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-[#002E4E]/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#D8E6ED] rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-[#D8E6ED] pb-3">
               <div className="flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-indigo-400" />
-                <h3 className="font-bold text-lg text-slate-100">Add Building / Block</h3>
+                <Building2 className="w-5 h-5 text-[#2582A1]" />
+                <h3 className="font-bold text-lg text-[#002E4E]">Add Campus Building</h3>
               </div>
-              <button onClick={() => setShowAddBuildingModal(false)} className="text-slate-400 hover:text-slate-200">
+              <button onClick={() => setShowAddBuildingModal(false)} className="text-[#4A6375] hover:text-[#002E4E]">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleAddBuilding} className="space-y-4 text-sm">
               <div>
-                <label className="block text-slate-400 text-xs font-semibold mb-1">Building Name</label>
+                <label className="block text-[#4A6375] text-xs font-bold mb-1">Building Name</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Science Block, Engineering Complex"
+                  placeholder="e.g. Technology Tower, Innovation Block"
                   value={newBuildingData.name}
                   onChange={e => setNewBuildingData({ ...newBuildingData, name: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                  className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-400 text-xs font-semibold mb-1">Building Code</label>
+                <label className="block text-[#4A6375] text-xs font-bold mb-1">Building Code</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. SB, ENG, MB"
+                  placeholder="e.g. BLD-TECH, BLD-INNOV"
                   value={newBuildingData.code}
                   onChange={e => setNewBuildingData({ ...newBuildingData, code: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                  className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#D8E6ED]">
                 <button
                   type="button"
                   onClick={() => setShowAddBuildingModal(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium"
+                  className="px-4 py-2 bg-[#F4F8FA] hover:bg-[#E8F4F8] text-[#4A6375] rounded-xl text-xs font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/20"
+                  className="px-4 py-2 bg-[#2582A1] hover:bg-[#1C6982] text-white rounded-xl text-xs font-bold shadow-xs"
                 >
                   Add Building
                 </button>
@@ -1706,74 +2032,72 @@ export const AcademicSettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL: ADD SECTION                                                        */}
-      {/* ========================================================================= */}
+      {/* MODAL: ADD SECTION */}
       {showAddSectionModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-[#002E4E]/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#D8E6ED] rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-[#D8E6ED] pb-3">
               <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-indigo-400" />
-                <h3 className="font-bold text-lg text-slate-100">Add Academic Section</h3>
+                <Users className="w-5 h-5 text-[#2582A1]" />
+                <h3 className="font-bold text-lg text-[#002E4E]">Add Section / Class Cohort</h3>
               </div>
-              <button onClick={() => setShowAddSectionModal(false)} className="text-slate-400 hover:text-slate-200">
+              <button onClick={() => setShowAddSectionModal(false)} className="text-[#4A6375] hover:text-[#002E4E]">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleAddSection} className="space-y-4 text-sm">
               <div>
-                <label className="block text-slate-400 text-xs font-semibold mb-1">Section Name</label>
+                <label className="block text-[#4A6375] text-xs font-bold mb-1">Section Name</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. CSE-A, AI&DS-B, CYS-A, AI&ML-C"
                   value={sectionFormData.name}
                   onChange={e => setSectionFormData({ ...sectionFormData, name: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                  className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-400 text-xs font-semibold mb-1">Semester</label>
+                <label className="block text-[#4A6375] text-xs font-bold mb-1">Semester</label>
                 <select
                   required
                   value={sectionFormData.semesterId}
                   onChange={e => setSectionFormData({ ...sectionFormData, semesterId: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                  className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                 >
                   <option value="">Select Semester...</option>
                   {cohortsData?.semesters?.map((sem: any) => (
                     <option key={sem.id} value={sem.id}>
-                      {sem.name} (Year {sem.yearNumber || sem.batchYear || 1})
+                      {sem.name || `Semester ${sem.semester_number}`}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-slate-400 text-xs font-semibold mb-1">Student Capacity / Count</label>
+                <label className="block text-[#4A6375] text-xs font-bold mb-1">Student Capacity / Count</label>
                 <input
                   type="number"
                   min="1"
                   value={sectionFormData.studentCount}
                   onChange={e => setSectionFormData({ ...sectionFormData, studentCount: parseInt(e.target.value, 10) || 60 })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                  className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#D8E6ED]">
                 <button
                   type="button"
                   onClick={() => setShowAddSectionModal(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium"
+                  className="px-4 py-2 bg-[#F4F8FA] hover:bg-[#E8F4F8] text-[#4A6375] rounded-xl text-xs font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/20"
+                  className="px-4 py-2 bg-[#2582A1] hover:bg-[#1C6982] text-white rounded-xl text-xs font-bold shadow-xs"
                 >
                   Create Section
                 </button>
@@ -1783,41 +2107,39 @@ export const AcademicSettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL: ADD BATCH                                                          */}
-      {/* ========================================================================= */}
+      {/* MODAL: ADD BATCH */}
       {showAddBatchModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-[#002E4E]/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#D8E6ED] rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-[#D8E6ED] pb-3">
               <div className="flex items-center gap-2">
-                <Layers className="w-5 h-5 text-indigo-400" />
-                <h3 className="font-bold text-lg text-slate-100">Add Academic Batch</h3>
+                <Layers className="w-5 h-5 text-[#2582A1]" />
+                <h3 className="font-bold text-lg text-[#002E4E]">Add Academic Batch</h3>
               </div>
-              <button onClick={() => setShowAddBatchModal(false)} className="text-slate-400 hover:text-slate-200">
+              <button onClick={() => setShowAddBatchModal(false)} className="text-[#4A6375] hover:text-[#002E4E]">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleAddBatch} className="space-y-4 text-sm">
               <div>
-                <label className="block text-slate-400 text-xs font-semibold mb-1">Batch Name</label>
+                <label className="block text-[#4A6375] text-xs font-bold mb-1">Batch Name</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Batch 2024-2028"
                   value={newBatchData.name}
                   onChange={e => setNewBatchData({ ...newBatchData, name: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                  className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-400 text-xs font-semibold mb-1">Academic Year Number (1 - 4)</label>
+                <label className="block text-[#4A6375] text-xs font-bold mb-1">Academic Year Number (1 - 4)</label>
                 <select
                   value={newBatchData.year}
                   onChange={e => setNewBatchData({ ...newBatchData, year: parseInt(e.target.value, 10) })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                  className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm font-bold focus:border-[#2582A1]"
                 >
                   <option value={1}>Year 1 (1st Year)</option>
                   <option value={2}>Year 2 (2nd Year)</option>
@@ -1828,36 +2150,36 @@ export const AcademicSettingsView: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 text-xs font-semibold mb-1">Start Year</label>
+                  <label className="block text-[#4A6375] text-xs font-bold mb-1">Start Year</label>
                   <input
                     type="number"
                     value={newBatchData.startYear}
                     onChange={e => setNewBatchData({ ...newBatchData, startYear: parseInt(e.target.value, 10) })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                    className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 text-xs font-semibold mb-1">End Year</label>
+                  <label className="block text-[#4A6375] text-xs font-bold mb-1">End Year</label>
                   <input
                     type="number"
                     value={newBatchData.endYear}
                     onChange={e => setNewBatchData({ ...newBatchData, endYear: parseInt(e.target.value, 10) })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                    className="w-full bg-white border border-[#D8E6ED] rounded-xl px-3 py-2 text-[#002E4E] text-sm focus:border-[#2582A1]"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#D8E6ED]">
                 <button
                   type="button"
                   onClick={() => setShowAddBatchModal(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium"
+                  className="px-4 py-2 bg-[#F4F8FA] hover:bg-[#E8F4F8] text-[#4A6375] rounded-xl text-xs font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/20"
+                  className="px-4 py-2 bg-[#2582A1] hover:bg-[#1C6982] text-white rounded-xl text-xs font-bold shadow-xs"
                 >
                   Add Batch
                 </button>

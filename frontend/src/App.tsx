@@ -21,6 +21,8 @@ import { PublishingAndAuditView } from './components/governance/PublishingAndAud
 import { RoleProfileRouter } from './components/roles/RoleProfileRouter';
 import { UserManagementView } from './components/roles/UserManagementView';
 import { AcademicSettingsView } from './components/AcademicSettingsView';
+import { CohortHierarchyManagerView } from './components/cohorts/CohortHierarchyManagerView';
+import { FacultyPortalView } from './components/faculty/FacultyPortalView';
 import { AuthPage } from './components/auth/AuthPage';
 import { NotFoundPage } from './components/common/NotFoundPage';
 import { api } from './api';
@@ -349,10 +351,15 @@ export const App: React.FC = () => {
             <AvailabilityMatrixView />
           )}
 
-          {(currentSection === 'hierarchy' ||
-            currentSection === 'faculty' ||
-            currentSection === 'students' ||
-            currentSection === 'courses' ||
+          {(currentSection === 'hierarchy' || currentSection === 'students') && (
+            <CohortHierarchyManagerView />
+          )}
+
+          {currentSection === 'faculty' && (
+            <FacultyPortalView />
+          )}
+
+          {(currentSection === 'courses' ||
             currentSection === 'activities' ||
             currentSection === 'infrastructure' ||
             currentSection === 'calendar') && (

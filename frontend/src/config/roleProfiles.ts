@@ -122,7 +122,7 @@ export const ROLE_CONFIGS: Record<RoleType, RoleConfig> = {
       {
         label: 'Platform Status',
         getValue: () => '100% Operational',
-        sublabel: 'FET Core 6.0 Active'
+        sublabel: 'Neon PostgreSQL Cloud'
       },
       {
         label: 'System Load',

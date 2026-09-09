@@ -3,8 +3,8 @@ import dotenv from 'dotenv';
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { initializeDatabase, syncFromPostgres } from './db/database';
-import { seedDatabase } from './db/seed';
+import { initializePostgresSchema } from './db/database';
+import { seedPostgres } from './db/seed_postgres';
 import { apiRouter } from './routes/api';
 
 dotenv.config();
@@ -16,7 +16,7 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Normalize double or multiple slashes (e.g. //auth/login -> /auth/login)
+// Normalize double slashes
 app.use((req, res, next) => {
   if (req.url && req.url.includes('//')) {
     req.url = req.url.replace(/\/+/g, '/');
@@ -24,26 +24,36 @@ app.use((req, res, next) => {
   next();
 });
 
-// Initialize DB and Seed PostgreSQL / Local Data
-initializeDatabase();
-syncFromPostgres().then(synced => {
-  if (!synced) {
-    seedDatabase(false);
+// Initialise Neon PostgreSQL schema and seed if empty
+(async () => {
+  try {
+    await initializePostgresSchema();
+
+    // Seed only if tables are empty (idempotent)
+    const { pgQuery } = await import('./db/database');
+    const rows = await pgQuery('SELECT COUNT(*) as cnt FROM users');
+    const count = Number(rows[0]?.cnt ?? 0);
+    if (count === 0) {
+      console.log('No data found — seeding Neon PostgreSQL with Apollo University defaults...');
+      await seedPostgres(false);
+    } else {
+      console.log(`✓ Neon PostgreSQL already contains ${count} user(s). Skipping seed.`);
+    }
+  } catch (err: any) {
+    console.error('Startup DB error:', err.message);
   }
-}).catch(() => {
-  seedDatabase(false);
-});
+})();
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', db: 'neon-postgresql', timestamp: new Date().toISOString() });
 });
 
-// Register API Router under both /api and root / for deployment versatility
+// API routes
 app.use('/api', apiRouter);
 app.use('/', apiRouter);
 
-// Serve static frontend if bundled together
+// Serve static frontend if bundled
 const frontendDist = [
   path.resolve(__dirname, '../../frontend/dist'),
   path.resolve(__dirname, '../frontend/dist'),
@@ -59,27 +69,25 @@ if (frontendDist) {
     next();
   });
 } else {
-  // Root fallback message
   app.get('/', (req, res) => {
-    res.send('University Timetable Backend API is active at /api');
+    res.send('Apollo University Timetable Backend — Neon PostgreSQL active at /api');
   });
 }
 
 process.on('unhandledRejection', (reason: any) => {
-  console.warn('Unhandled Promise Rejection (handled safely):', reason?.message || reason);
+  console.warn('Unhandled Rejection:', reason?.message || reason);
 });
 
 process.on('uncaughtException', (err: any) => {
-  console.warn('Uncaught Exception (handled safely):', err?.message || err);
+  console.warn('Uncaught Exception:', err?.message || err);
 });
 
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`====================================================`);
-    console.log(`University Timetabling System Backend API`);
+    console.log(`Apollo University Timetabling System`);
     console.log(`Server listening on http://localhost:${PORT}`);
-    console.log(`FET Interoperability Layer: READY`);
-    console.log(`CSP Constraint Solver & Optimizer: READY`);
+    console.log(`Database: Neon PostgreSQL (cloud-only)`);
     console.log(`====================================================`);
   });
 }

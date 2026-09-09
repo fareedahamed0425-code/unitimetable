@@ -91,7 +91,10 @@ CREATE TABLE IF NOT EXISTS sections (
     batch_id TEXT NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
     semester_id TEXT NOT NULL REFERENCES semesters(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    student_count INTEGER NOT NULL DEFAULT 60
+    student_count INTEGER NOT NULL DEFAULT 60,
+    department_id TEXT REFERENCES departments(id) ON DELETE SET NULL,
+    home_room_id TEXT REFERENCES rooms(id) ON DELETE SET NULL,
+    class_teacher_id TEXT REFERENCES teachers(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS student_groups (
@@ -116,6 +119,7 @@ CREATE TABLE IF NOT EXISTS teachers (
     email TEXT UNIQUE NOT NULL,
     phone TEXT,
     department_id TEXT NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+    department_ids_json TEXT,
     designation TEXT NOT NULL,
     max_hours_per_day INTEGER NOT NULL DEFAULT 5,
     max_hours_per_week INTEGER NOT NULL DEFAULT 20,
@@ -126,6 +130,10 @@ CREATE TABLE IF NOT EXISTS teachers (
     min_rest_hours_between_days INTEGER DEFAULT 12,
     max_gaps_per_day INTEGER NOT NULL DEFAULT 2,
     max_gaps_per_week INTEGER NOT NULL DEFAULT 6,
+    available_start_time TEXT DEFAULT '09:00',
+    available_end_time TEXT DEFAULT '17:00',
+    lunch_break_period INTEGER DEFAULT 4,
+    unavailable_slots_json TEXT,
     home_room_id TEXT,
     home_building_id TEXT
 );

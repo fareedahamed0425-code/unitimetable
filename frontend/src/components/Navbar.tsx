@@ -94,8 +94,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="font-extrabold text-sm sm:text-base text-[#002E4E] tracking-tight group-hover:text-[#2582A1] transition-colors">
                   The Apollo University
                 </span>
-                <span className="hidden md:inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#FDB931] text-[#002E4E] uppercase tracking-wider">
-                  FET Core
+                <span className="hidden md:inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#FFF7E6] text-[#B27B08] border border-[#FFE4A8] uppercase tracking-wider">
+                  AI Platform
                 </span>
               </div>
               <p className="text-[10px] text-[#4A6375] font-medium hidden sm:block -mt-0.5">

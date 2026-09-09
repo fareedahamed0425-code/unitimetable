@@ -100,6 +100,14 @@ export interface Section {
   semesterId: string;
   name: string; // e.g. "Section A"
   studentCount: number;
+  departmentId?: string;
+  departmentName?: string;
+  departmentCode?: string;
+  yearNumber?: number;
+  homeRoomId?: string;
+  homeRoomName?: string;
+  classTeacherId?: string;
+  classTeacherName?: string;
 }
 
 export interface StudentGroup {
@@ -128,6 +136,8 @@ export interface Teacher {
   departmentId: string;
   departmentName?: string;
   departmentCode?: string;
+  departmentIds?: string[]; // Multi-department support
+  departmentNames?: string[];
   designation: string; // Professor, Assoc Prof, Asst Prof, Lecturer
   maxHoursPerDay: number;
   maxHoursPerWeek: number;
@@ -138,6 +148,10 @@ export interface Teacher {
   minRestHoursBetweenDays?: number;
   maxGapsPerDay: number;
   maxGapsPerWeek: number;
+  availableStartTime?: string; // e.g. "09:00"
+  availableEndTime?: string; // e.g. "16:00"
+  lunchBreakPeriod?: number; // e.g. 4
+  unavailableSlotsJson?: string; // e.g. "[{day: 2, period: 3}]"
   homeRoomId?: string;
   homeBuildingId?: string;
   qualifications: string[]; // Subject / Course IDs qualified to teach

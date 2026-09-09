@@ -640,6 +640,17 @@ export const api = {
     return json;
   },
 
+  async populateDefaultSlots(year: number): Promise<any> {
+    const res = await fetch(url('admin/calendar/slots/populate-default'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ year })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to populate default periods');
+    return json;
+  },
+
   // Admin Academic Settings - Rooms & Buildings
   async getAdminRooms(): Promise<{ rooms: any[]; buildings: any[] }> {
     const res = await fetch(url('admin/rooms'));
@@ -762,6 +773,84 @@ export const api = {
     const res = await fetch(url('admin/hierarchy/full'));
     const json = await res.json();
     return json.data || [];
+  },
+
+  async bulkDivideSections(data: {
+    batchId: string;
+    semesterId: string;
+    baseName: string;
+    sectionCount: number;
+    totalStudents?: number;
+  }): Promise<{ success: boolean; message: string; createdIds?: string[] }> {
+    const res = await fetch(url('admin/sections/bulk-divide'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  async updateSectionDetailed(id: string, data: {
+    name?: string;
+    student_count?: number;
+    home_room_id?: string;
+    class_teacher_id?: string;
+    department_id?: string;
+  }): Promise<{ success: boolean; message?: string }> {
+    const res = await fetch(url(`admin/sections/${id}/detailed`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  // Faculty & Department Management
+  async getAdminTeachers(): Promise<any[]> {
+    const res = await fetch(url('admin/teachers'));
+    const json = await res.json();
+    return json.data || [];
+  },
+
+  async addAdminTeacher(data: any): Promise<any> {
+    const res = await fetch(url('admin/teachers'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  async updateAdminTeacher(id: string, data: any): Promise<any> {
+    const res = await fetch(url(`admin/teachers/${id}`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+
+  async deleteAdminTeacher(id: string): Promise<any> {
+    const res = await fetch(url(`admin/teachers/${id}`), {
+      method: 'DELETE'
+    });
+    return res.json();
+  },
+
+  async uploadFacultyPdf(params: { fileBase64?: string; rawText?: string }): Promise<{
+    success: boolean;
+    message?: string;
+    facultyCount?: number;
+    insertedCount?: number;
+    faculty?: any[];
+    error?: string;
+  }> {
+    const res = await fetch(url('admin/faculty/upload-pdf'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    return res.json();
   }
 };
 

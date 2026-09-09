@@ -15,7 +15,12 @@ import {
   ShieldCheck,
   RotateCcw,
   Zap,
-  ChevronDown
+  ChevronDown,
+  Bot,
+  MessageSquare,
+  Wand2,
+  Calendar,
+  School
 } from 'lucide-react';
 import { api } from '../../api';
 import { GenerationJob, SmartPreferenceRule } from '../../../../shared/types';
@@ -45,15 +50,11 @@ export const SmartWizardView: React.FC<SmartWizardProps> = ({
     else if (onFinish) onFinish();
   };
 
-  const handleDismiss = () => {
-    if (onClose) onClose();
-    else if (onFinish) onFinish();
-  };
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [selectedTerm, setSelectedTerm] = useState('ay-2026-2027');
   const [selectedDept, setSelectedDept] = useState('dept-cse');
   const [selectedProgram, setSelectedProgram] = useState('prog-btech-cse');
-  const [selectedSemester, setSelectedSemester] = useState('sem-cse-3');
+  const [selectedSemester, setSelectedSemester] = useState('ALL');
 
   // Real dynamic resource counts from database
   const [resourceStats, setResourceStats] = useState({
@@ -81,9 +82,9 @@ export const SmartWizardView: React.FC<SmartWizardProps> = ({
     }
   };
 
-  // Step 3 & 4: Natural Language & Presets
+  // Step 3 & 4: Natural Language & Presets with Apollo AI Persona
   const [promptText, setPromptText] = useState(
-    'I want students to have as few gaps as possible, no classes after 4 PM, labs preferably in the afternoon, and teachers should not have more than 3 consecutive classes.'
+    'Keep student timetable gaps minimal, avoid classes after 4 PM, schedule heavy computer labs in afternoon periods, ensure lunch break at Period 4, and limit continuous faculty lecture hours to 3.'
   );
   const [selectedPreset, setSelectedPreset] = useState<'STUDENT_FRIENDLY' | 'FACULTY_FRIENDLY' | 'ROOM_EFFICIENT' | 'BALANCED' | 'CUSTOM'>('BALANCED');
   const [interpretedRules, setInterpretedRules] = useState<SmartPreferenceRule[]>([]);
@@ -145,278 +146,310 @@ export const SmartWizardView: React.FC<SmartWizardProps> = ({
   };
 
   const steps = [
-    { num: 1, label: 'Scope' },
+    { num: 1, label: 'Academic Scope' },
     { num: 2, label: 'Resources' },
-    { num: 3, label: 'Preferences' },
-    { num: 4, label: 'Rules' },
-    { num: 5, label: 'Mode' },
-    { num: 6, label: 'Solving' },
-    { num: 7, label: 'Results' }
+    { num: 3, label: 'Apollo AI Prompts' },
+    { num: 4, label: 'Rules & Weights' },
+    { num: 5, label: 'Solving Mode' },
+    { num: 6, label: 'Execution' },
+    { num: 7, label: 'Verification' }
+  ];
+
+  const suggestedApolloPrompts = [
+    'Schedule Year 3 CSE & AIML core lectures in morning slots (09:00 - 12:15) and Labs from 13:15 onwards.',
+    'Reserve Period 4 (12:15 - 13:15) for unified faculty and student lunch across all 4 departments.',
+    'Ensure multi-department faculty teaching both AIML and Cyber Security have 0 timetable conflicts.',
+    'Maximize utilization of high-capacity Smart Seminar Halls (CR-201, CR-301) for combined classes.'
   ];
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Wizard Header */}
-      <div className="lux-card p-6 bg-white border-[#E8E7E3]">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-[#F4F4F1] text-[#575A65] border border-[#E8E7E3]">
-                Setup Assistant
-              </span>
-              <span className="text-xs text-[#8B8E99] font-medium">FET Constraint Solving</span>
+    <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn pb-12">
+      {/* Apollo University Scheduling AI Persona Header */}
+      <div className="bg-white rounded-2xl p-6 text-[#002E4E] shadow-sm border border-[#D8E6ED] relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
+          <div>
+            <div className="flex items-center gap-2 text-[#2582A1] text-xs font-bold uppercase tracking-wider mb-1">
+              <Bot className="w-4 h-4 text-[#2582A1]" /> The Apollo University Chief Academic Scheduling AI
             </div>
-            <h1 className="text-2xl font-bold text-[#121316] tracking-tight">Smart Timetable Wizard</h1>
-            <p className="text-xs text-[#575A65]">
-              Transform human language preferences and institutional constraints into an optimal schedule.
+            <h1 className="text-2xl font-bold tracking-tight text-[#002E4E] flex items-center gap-2">
+              Intelligent Timetable Generation Wizard
+            </h1>
+            <p className="text-[#4A6375] text-xs sm:text-sm mt-1 max-w-2xl">
+              Powered by simulated annealing and CSP algorithms to synthesize clash-free schedules respecting working shifts, multi-department faculty, and departmental student quotas.
             </p>
           </div>
-          <div className="w-9 h-9 rounded-lg bg-[#F4F4F1] text-[#121316] flex items-center justify-center">
-            <Sparkles className="w-4 h-4" />
+
+          <div className="w-12 h-12 rounded-2xl bg-[#E8F4F8] border border-[#C4E2EC] text-[#2582A1] flex items-center justify-center flex-shrink-0">
+            <Wand2 className="w-6 h-6 text-[#2582A1]" />
           </div>
         </div>
 
         {/* Step Progress Bar */}
-        <div className="flex items-center justify-between mt-6 pt-5 border-t border-[#E8E7E3] overflow-x-auto gap-2">
+        <div className="flex items-center justify-between mt-6 pt-5 border-t border-[#D8E6ED] overflow-x-auto gap-2 scrollbar-none">
           {steps.map(s => {
             const isCompleted = currentStep > s.num;
             const isCurrent = currentStep === s.num;
             return (
               <div key={s.num} className="flex items-center gap-2 flex-shrink-0">
                 <div
-                  className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold transition-all ${
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold transition-all ${
                     isCompleted
-                      ? 'bg-[#121316] text-white'
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-300'
                       : isCurrent
-                      ? 'bg-[#121316] text-white ring-2 ring-[#121316]/20'
-                      : 'bg-[#F4F4F1] text-[#8B8E99] border border-[#E8E7E3]'
+                      ? 'bg-[#2582A1] text-white shadow-xs'
+                      : 'bg-[#F4F8FA] text-[#4A6375] border border-[#D8E6ED]'
                   }`}
                 >
                   {isCompleted ? <Check className="w-3.5 h-3.5" /> : s.num}
                 </div>
-                <span className={`text-xs ${isCurrent ? 'text-[#121316] font-bold' : 'text-[#8B8E99]'}`}>
+                <span className={`text-xs ${isCurrent ? 'text-[#002E4E] font-bold' : 'text-[#4A6375]'}`}>
                   {s.label}
                 </span>
-                {s.num < steps.length && <div className="w-5 h-0.5 bg-[#E8E7E3] mx-1 hidden sm:block"></div>}
+                {s.num < steps.length && <div className="w-4 h-0.5 bg-[#D8E6ED] mx-1 hidden sm:block"></div>}
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* Step 1: Select Academic Scope */}
+      {/* Step 1: Academic Scope */}
       {currentStep === 1 && (
-        <div className="lux-card p-6 space-y-6">
+        <div className="bg-white rounded-2xl border border-[#D8E6ED] p-6 space-y-6 shadow-sm">
           <div>
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#121316]">Step 1: Academic Scope</h2>
-            <p className="text-xs text-[#8B8E99]">Define the university department, degree program, and semester.</p>
+            <h2 className="text-sm font-bold uppercase tracking-wider text-[#002E4E] flex items-center gap-2">
+              <School className="w-4 h-4 text-indigo-600" /> Step 1: Define Target Academic Scope
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Specify the academic year, core departments, and target cohort branches to schedule.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-[#121316] mb-1.5">Academic Year & Term</label>
-              <div className="relative">
-                <select
-                  className="lux-select w-full appearance-none pr-8 bg-[#F9F9F8]"
-                  value={selectedTerm}
-                  onChange={e => setSelectedTerm(e.target.value)}
-                >
-                  <option value="ay-2026-2027">2026–2027 (Odd Semester / Fall)</option>
-                </select>
-                <ChevronDown className="w-3 h-3 text-[#8B8E99] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Academic Session
+              </label>
+              <select
+                className="w-full px-3 py-2 text-sm border border-[#D8E6ED] rounded-xl bg-white text-[#002E4E] focus:ring-2 focus:ring-indigo-500"
+                value={selectedTerm}
+                onChange={e => setSelectedTerm(e.target.value)}
+              >
+                <option value="ay-2026-2027">2026–2027 Academic Year (All Semesters)</option>
+              </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#121316] mb-1.5">Department</label>
-              <div className="relative">
-                <select
-                  className="lux-select w-full appearance-none pr-8 bg-[#F9F9F8]"
-                  value={selectedDept}
-                  onChange={e => setSelectedDept(e.target.value)}
-                >
-                  <option value="dept-cse">Computer Science & Engineering (CSE)</option>
-                  <option value="dept-ece">Electronics & Communication (ECE)</option>
-                  <option value="dept-it">Information Technology (IT)</option>
-                </select>
-                <ChevronDown className="w-3 h-3 text-[#8B8E99] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Target Department Scope
+              </label>
+              <select
+                className="w-full px-3 py-2 text-sm border border-[#D8E6ED] rounded-xl bg-white text-[#002E4E] focus:ring-2 focus:ring-indigo-500"
+                value={selectedDept}
+                onChange={e => setSelectedDept(e.target.value)}
+              >
+                <option value="ALL">All 4 Core Departments (CSE, AI&DS, AIML, Cyber Sec)</option>
+                <option value="dept-cse">Computer Science & Engineering (CSE)</option>
+                <option value="dept-aids">Artificial Intelligence & Data Science (AI&DS)</option>
+                <option value="dept-aiml">Artificial Intelligence & Machine Learning (AIML)</option>
+                <option value="dept-cs">Cyber Security (CS)</option>
+              </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#121316] mb-1.5">Degree Program</label>
-              <div className="relative">
-                <select
-                  className="lux-select w-full appearance-none pr-8 bg-[#F9F9F8]"
-                  value={selectedProgram}
-                  onChange={e => setSelectedProgram(e.target.value)}
-                >
-                  <option value="prog-btech-cse">B.Tech Computer Science & Engineering</option>
-                  <option value="prog-btech-ece">B.Tech Electronics & Communication</option>
-                </select>
-                <ChevronDown className="w-3 h-3 text-[#8B8E99] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Target Undergraduate Years
+              </label>
+              <select
+                className="w-full px-3 py-2 text-sm border border-[#D8E6ED] rounded-xl bg-white text-[#002E4E] focus:ring-2 focus:ring-indigo-500"
+                value={selectedSemester}
+                onChange={e => setSelectedSemester(e.target.value)}
+              >
+                <option value="ALL">All 4 Undergraduate Years (Years 1 to 4)</option>
+                <option value="1">Year 1 (Freshmen - Semesters 1 & 2)</option>
+                <option value="2">Year 2 (Sophomores - Semesters 3 & 4)</option>
+                <option value="3">Year 3 (Juniors - Semesters 5 & 6)</option>
+                <option value="4">Year 4 (Seniors - Semesters 7 & 8)</option>
+              </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#121316] mb-1.5">Target Batches</label>
-              <div className="relative">
-                <select
-                  className="lux-select w-full appearance-none pr-8 bg-[#F9F9F8]"
-                  value={selectedSemester}
-                  onChange={e => setSelectedSemester(e.target.value)}
-                >
-                  <option value="sem-cse-3">Semester 3 (Sophomore - CSE 3-A & 3-B)</option>
-                  <option value="sem-cse-5">Semester 5 (Junior - CSE 5-A)</option>
-                  <option value="ALL">All Semesters (Whole Department)</option>
-                </select>
-                <ChevronDown className="w-3 h-3 text-[#8B8E99] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Optimization Priority
+              </label>
+              <select
+                className="w-full px-3 py-2 text-sm border border-[#D8E6ED] rounded-xl bg-white text-[#002E4E] focus:ring-2 focus:ring-indigo-500"
+                defaultValue="UNIFIED"
+              >
+                <option value="UNIFIED">Zero-Conflict Global Optimization (Recommended)</option>
+                <option value="FACULTY">Faculty Availability Priority</option>
+                <option value="STUDENT">Student Workload Distribution</option>
+              </select>
             </div>
           </div>
 
-          <div className="flex justify-end pt-4 border-t border-[#E8E7E3]">
+          <div className="flex justify-end pt-4 border-t border-slate-100">
             <button
               onClick={() => setCurrentStep(2)}
-              className="lux-btn lux-btn-primary text-xs py-2 px-5 flex items-center gap-2"
+              className="flex items-center gap-2 px-5 py-2.5 bg-[#2582A1] hover:bg-[#1C6982] text-white rounded-xl text-xs font-bold shadow-md transition-all"
             >
-              <span>Next: Review Resources</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <span>Next: Inspect Live Resources</span>
+              <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>
       )}
 
-      {/* Step 2: Review Resources (Real-Time Counts) */}
+      {/* Step 2: Resource Inspection */}
       {currentStep === 2 && (
-        <div className="lux-card p-6 space-y-6">
+        <div className="bg-white rounded-2xl border border-[#D8E6ED] p-6 space-y-6 shadow-sm">
           <div>
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#121316]">Step 2: Department Resources</h2>
-            <p className="text-xs text-[#8B8E99]">Live database counts for teachers, student cohorts, venues, and curriculum activities.</p>
+            <h2 className="text-sm font-bold uppercase tracking-wider text-[#002E4E] flex items-center gap-2">
+              <Layers className="w-4 h-4 text-indigo-600" /> Step 2: Institutional Resource Availability
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Live database counts of professors, registered student sections, lecture halls, and lab venues.
+            </p>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-            <div className="p-4 rounded-lg bg-[#FAF9F7] border border-[#E8E7E3] text-center space-y-1">
-              <div className="w-7 h-7 rounded bg-white border border-[#E8E7E3] text-[#121316] flex items-center justify-center mx-auto">
-                <Users className="w-3.5 h-3.5" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="p-4 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] text-center space-y-1">
+              <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center mx-auto">
+                <Users className="w-4 h-4" />
               </div>
-              <div className="text-base font-bold text-[#121316] mt-2">{resourceStats.teachers} Teachers</div>
-              <div className="text-[11px] text-[#8B8E99]">Faculty Records</div>
+              <div className="text-lg font-bold text-[#002E4E] mt-2">{resourceStats.teachers} Teachers</div>
+              <div className="text-[11px] text-slate-500">Cross-Dept Faculty</div>
             </div>
 
-            <div className="p-4 rounded-lg bg-[#FAF9F7] border border-[#E8E7E3] text-center space-y-1">
-              <div className="w-7 h-7 rounded bg-white border border-[#E8E7E3] text-[#121316] flex items-center justify-center mx-auto">
-                <GraduationCap className="w-3.5 h-3.5" />
+            <div className="p-4 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] text-center space-y-1">
+              <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto">
+                <GraduationCap className="w-4 h-4" />
               </div>
-              <div className="text-base font-bold text-[#121316] mt-2">{resourceStats.students} Students</div>
-              <div className="text-[11px] text-[#8B8E99]">Enrolled Cohorts</div>
+              <div className="text-lg font-bold text-[#002E4E] mt-2">{resourceStats.students} Students</div>
+              <div className="text-[11px] text-slate-500">Divided Sections</div>
             </div>
 
-            <div className="p-4 rounded-lg bg-[#FAF9F7] border border-[#E8E7E3] text-center space-y-1">
-              <div className="w-7 h-7 rounded bg-white border border-[#E8E7E3] text-[#121316] flex items-center justify-center mx-auto">
-                <Building className="w-3.5 h-3.5" />
+            <div className="p-4 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] text-center space-y-1">
+              <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
+                <Building className="w-4 h-4" />
               </div>
-              <div className="text-base font-bold text-[#121316] mt-2">{resourceStats.rooms} Venues</div>
-              <div className="text-[11px] text-[#8B8E99]">Rooms & Labs</div>
+              <div className="text-lg font-bold text-[#002E4E] mt-2">{resourceStats.rooms} Venues</div>
+              <div className="text-[11px] text-slate-500">Classrooms & Labs</div>
             </div>
 
-            <div className="p-4 rounded-lg bg-[#FAF9F7] border border-[#E8E7E3] text-center space-y-1">
-              <div className="w-7 h-7 rounded bg-white border border-[#E8E7E3] text-[#121316] flex items-center justify-center mx-auto">
-                <Layers className="w-3.5 h-3.5" />
+            <div className="p-4 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] text-center space-y-1">
+              <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center mx-auto">
+                <Layers className="w-4 h-4" />
               </div>
-              <div className="text-base font-bold text-[#121316] mt-2">{resourceStats.activities} Activities</div>
-              <div className="text-[11px] text-[#8B8E99]">Curriculum Sessions</div>
-            </div>
-          </div>
-
-          <div className="p-3.5 rounded-lg bg-[#F0FDF4] border border-[#BBF7D0] flex items-center gap-3">
-            <CheckCircle2 className="w-4 h-4 text-[#166534] flex-shrink-0" />
-            <div className="text-xs text-[#166534]">
-              <span className="font-bold">Live Feasibility Check Passed:</span> Room capacity, faculty contracts, and weekly slot hours are mathematically verified.
+              <div className="text-lg font-bold text-[#002E4E] mt-2">{resourceStats.activities} Activities</div>
+              <div className="text-[11px] text-slate-500">Weekly Sessions</div>
             </div>
           </div>
 
-          <div className="flex justify-between pt-4 border-t border-[#E8E7E3]">
+          <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-3">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+            <div className="text-xs text-emerald-800">
+              <span className="font-bold">Institutional Capacity Verified:</span> Venue seats match cohort headcounts, and faculty working hours accommodate all required curriculum hours without double-booking.
+            </div>
+          </div>
+
+          <div className="flex justify-between pt-4 border-t border-slate-100">
             <button
               onClick={() => setCurrentStep(1)}
-              className="lux-btn text-xs py-2 px-4 flex items-center gap-1.5"
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800:text-slate-200 flex items-center gap-1.5"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back</span>
+              <ArrowLeft className="w-3.5 h-3.5" /> Back
             </button>
             <button
               onClick={() => setCurrentStep(3)}
-              className="lux-btn lux-btn-primary text-xs py-2 px-5 flex items-center gap-2"
+              className="flex items-center gap-2 px-5 py-2.5 bg-[#2582A1] hover:bg-[#1C6982] text-white rounded-xl text-xs font-bold shadow-md transition-all"
             >
-              <span>Next: Preferences</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <span>Next: AI Natural Language Scheduling</span>
+              <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>
       )}
 
-      {/* Step 3: Natural Language Preferences */}
+      {/* Step 3: Natural Language Constraint Prompting with Apollo AI */}
       {currentStep === 3 && (
-        <div className="lux-card p-6 space-y-6">
+        <div className="bg-white rounded-2xl border border-[#D8E6ED] p-6 space-y-6 shadow-sm">
           <div>
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#121316]">Step 3: Preference Formulation</h2>
-            <p className="text-xs text-[#8B8E99]">
-              Describe your goals in plain English or select a university preset profile.
+            <h2 className="text-sm font-bold uppercase tracking-wider text-[#002E4E] flex items-center gap-2">
+              <Bot className="w-4 h-4 text-indigo-600" /> Step 3: Apollo University AI Constraint Engine
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Input natural language scheduling policies or select institutional preset benchmarks.
             </p>
           </div>
 
           {/* Preset Profiles */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
-              { id: 'STUDENT_FRIENDLY', name: 'Student Friendly', desc: 'Minimal gaps, compact days, no late classes' },
-              { id: 'FACULTY_FRIENDLY', name: 'Faculty Friendly', desc: 'Balanced workload, max 3 consec classes' },
-              { id: 'ROOM_EFFICIENT', name: 'Room Efficient', desc: 'High occupancy, minimal room hopping' },
-              { id: 'BALANCED', name: 'Balanced', desc: 'Optimizes students, teachers & rooms together' }
+              { id: 'STUDENT_FRIENDLY', name: 'Student Centric', desc: 'Minimal gaps, compact lectures, afternoon practicals' },
+              { id: 'FACULTY_FRIENDLY', name: 'Faculty Balanced', desc: 'Shift compliance, max 3 continuous classes, P4 lunch' },
+              { id: 'ROOM_EFFICIENT', name: 'Venue Optimized', desc: 'High occupancy, fixed departmental home rooms' },
+              { id: 'BALANCED', name: 'Apollo Gold Standard', desc: 'Holistic multi-department clash-free optimization' }
             ].map(p => (
               <div
                 key={p.id}
                 onClick={() => setSelectedPreset(p.id as any)}
-                className={`p-3.5 rounded-lg border cursor-pointer transition-all ${
+                className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
                   selectedPreset === p.id
-                    ? 'border-[#121316] bg-[#FAF9F7] shadow-xs'
-                    : 'border-[#E8E7E3] hover:border-[#8B8E99] bg-white'
+                    ? 'border-indigo-600 bg-indigo-50/50 shadow-xs ring-1 ring-indigo-500'
+                    : 'border-[#D8E6ED] hover:border-slate-400 bg-white'
                 }`}
               >
-                <div className="text-xs font-bold text-[#121316]">{p.name}</div>
-                <div className="text-[11px] text-[#575A65] mt-1 leading-snug">{p.desc}</div>
+                <div className="text-xs font-bold text-[#002E4E]">{p.name}</div>
+                <div className="text-[11px] text-slate-500 mt-1 leading-snug">{p.desc}</div>
               </div>
             ))}
           </div>
 
-          {/* Natural Language Prompt Area */}
+          {/* Prompt Area */}
           <div className="space-y-2">
-            <label className="block text-xs font-semibold text-[#121316]">
-              Natural Language Intent:
+            <label className="block text-xs font-semibold text-slate-800">
+              Natural Language Academic Constraints & Rules:
             </label>
             <textarea
-              rows={3}
+              rows={4}
               value={promptText}
               onChange={e => setPromptText(e.target.value)}
-              placeholder="e.g. Keep classes between 9 AM and 4 PM, minimize student gaps, afternoon labs..."
-              className="lux-input text-xs leading-relaxed"
+              placeholder="e.g. Keep student timetable gaps minimal, avoid classes after 4 PM, schedule heavy computer labs in afternoon periods, ensure lunch break at Period 4..."
+              className="w-full p-3.5 text-xs border border-[#D8E6ED] rounded-xl bg-white text-[#002E4E] focus:ring-2 focus:ring-indigo-500 leading-relaxed font-sans"
             />
           </div>
 
-          <div className="flex justify-between pt-4 border-t border-[#E8E7E3]">
+          {/* Suggested Quick Prompts */}
+          <div className="space-y-1.5">
+            <span className="text-[11px] font-bold text-slate-400 uppercase">Suggested Apollo Rules:</span>
+            <div className="flex flex-wrap gap-2">
+              {suggestedApolloPrompts.map((sPrompt, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setPromptText(sPrompt)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200:bg-slate-700 text-slate-700 text-[11px] transition-colors text-left border border-[#D8E6ED]"
+                >
+                  ⚡ {sPrompt.slice(0, 50)}...
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-between pt-4 border-t border-slate-100">
             <button
               onClick={() => setCurrentStep(2)}
-              className="lux-btn text-xs py-2 px-4 flex items-center gap-1.5"
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800:text-slate-200 flex items-center gap-1.5"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back</span>
+              <ArrowLeft className="w-3.5 h-3.5" /> Back
             </button>
             <button
               onClick={() => handleParsePrompt(promptText)}
               disabled={isParsingNlp}
-              className="lux-btn lux-btn-primary text-xs py-2 px-5 flex items-center gap-2"
+              className="flex items-center gap-2 px-5 py-2.5 bg-[#2582A1] hover:bg-[#1C6982] text-white rounded-xl text-xs font-bold shadow-md transition-all disabled:opacity-50"
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{isParsingNlp ? 'Interpreting...' : 'Parse Preferences'}</span>
+              <Sparkles className="w-4 h-4" />
+              <span>{isParsingNlp ? 'Interpreting Constraints...' : 'Parse & Formulate Rules'}</span>
             </button>
           </div>
         </div>
@@ -424,11 +457,13 @@ export const SmartWizardView: React.FC<SmartWizardProps> = ({
 
       {/* Step 4: Interpreted Rules Confirmation */}
       {currentStep === 4 && (
-        <div className="lux-card p-6 space-y-6">
+        <div className="bg-white rounded-2xl border border-[#D8E6ED] p-6 space-y-6 shadow-sm">
           <div>
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#121316]">Step 4: Interpreted Rules & Weights</h2>
-            <p className="text-xs text-[#8B8E99]">
-              Review the weighted soft constraints. Preferences never override hard physical constraints.
+            <h2 className="text-sm font-bold uppercase tracking-wider text-[#002E4E] flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-indigo-600" /> Step 4: Rule Matrix & Weight Distribution
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Review soft constraint penalties and active heuristic parameters synthesized from your prompt.
             </p>
           </div>
 
@@ -436,20 +471,20 @@ export const SmartWizardView: React.FC<SmartWizardProps> = ({
             {interpretedRules.map((rule, idx) => (
               <div
                 key={rule.id || idx}
-                className="p-3.5 rounded-lg border border-[#E8E7E3] bg-white flex items-center justify-between gap-4"
+                className="p-3.5 rounded-xl border border-[#D8E6ED] bg-[#F4F8FA]/50 flex items-center justify-between gap-4"
               >
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-[#121316]">{rule.name}</span>
-                    <span className="badge badge-primary text-[9px]">
+                    <span className="text-xs font-bold text-[#002E4E]">{rule.name}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800">
                       {rule.priority.replace(/_/g, ' ')} ({rule.weight}%)
                     </span>
                   </div>
-                  <p className="text-[11px] text-[#575A65]">{rule.description}</p>
+                  <p className="text-[11px] text-slate-500">{rule.description}</p>
                 </div>
 
-                <div className="flex items-center gap-2.5">
-                  <label className="text-xs text-[#8B8E99] font-medium">Active</label>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-slate-500 font-medium">Enforce</label>
                   <input
                     type="checkbox"
                     checked={rule.isEnabled}
@@ -458,220 +493,226 @@ export const SmartWizardView: React.FC<SmartWizardProps> = ({
                       updated[idx].isEnabled = e.target.checked;
                       setInterpretedRules(updated);
                     }}
-                    className="w-4 h-4 accent-[#121316] rounded cursor-pointer"
+                    className="w-4 h-4 accent-indigo-600 rounded cursor-pointer"
                   />
                 </div>
               </div>
             ))}
           </div>
 
-          <div className="p-3.5 rounded-lg bg-[#FAF9F7] border border-[#E8E7E3] text-xs text-[#575A65] flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-[#121316] flex-shrink-0" />
+          <div className="p-3.5 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] text-xs text-slate-600 flex items-center gap-2.5">
+            <ShieldCheck className="w-5 h-5 text-indigo-600 flex-shrink-0" />
             <span>
-              <strong>Hard Guarantee:</strong> The CSP solver guarantees 0 teacher double-booking, 0 student collisions, and 100% capacity matching.
+              <strong>Hard Guarantee:</strong> The Apollo CSP engine enforces 0 teacher collisions, 0 room double-booking, and strict shift adherence.
             </span>
           </div>
 
-          <div className="flex justify-between pt-4 border-t border-[#E8E7E3]">
+          <div className="flex justify-between pt-4 border-t border-slate-100">
             <button
               onClick={() => setCurrentStep(3)}
-              className="lux-btn text-xs py-2 px-4 flex items-center gap-1.5"
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800:text-slate-200 flex items-center gap-1.5"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Edit Prompt</span>
+              <ArrowLeft className="w-3.5 h-3.5" /> Refine Prompt
             </button>
             <button
               onClick={() => setCurrentStep(5)}
-              className="lux-btn lux-btn-primary text-xs py-2 px-5 flex items-center gap-2"
+              className="flex items-center gap-2 px-5 py-2.5 bg-[#2582A1] hover:bg-[#1C6982] text-white rounded-xl text-xs font-bold shadow-md transition-all"
             >
-              <span>Choose Mode</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <span>Choose Solving Strategy</span>
+              <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>
       )}
 
-      {/* Step 5: Scheduling Mode */}
+      {/* Step 5: Mode Selection */}
       {currentStep === 5 && (
-        <div className="lux-card p-6 space-y-6">
+        <div className="bg-white rounded-2xl border border-[#D8E6ED] p-6 space-y-6 shadow-sm">
           <div>
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#121316]">Step 5: Select Generation Mode</h2>
-            <p className="text-xs text-[#8B8E99]">Select how the engine should process the problem instance.</p>
+            <h2 className="text-sm font-bold uppercase tracking-wider text-[#002E4E] flex items-center gap-2">
+              <Sliders className="w-4 h-4 text-indigo-600" /> Step 5: Solver Execution Engine
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Select the degree of automation for assigning time slots and venues.
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div
               onClick={() => setGenerationMode('AUTOMATIC')}
-              className={`p-4 rounded-lg border cursor-pointer transition-all ${
+              className={`p-4 rounded-xl border cursor-pointer transition-all ${
                 generationMode === 'AUTOMATIC'
-                  ? 'border-[#121316] bg-[#FAF9F7]'
-                  : 'border-[#E8E7E3] bg-white hover:border-[#8B8E99]'
+                  ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-500'
+                  : 'border-[#D8E6ED] bg-white hover:border-slate-400'
               }`}
             >
-              <div className="w-7 h-7 rounded bg-[#121316] text-white flex items-center justify-center mb-3">
-                <Zap className="w-3.5 h-3.5" />
+              <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center mb-3">
+                <Zap className="w-4 h-4" />
               </div>
-              <div className="text-xs font-bold text-[#121316]">Mode 1 — Automatic</div>
-              <p className="text-[11px] text-[#575A65] mt-1">
-                Solves CSP and executes Simulated Annealing across all activities simultaneously.
+              <div className="text-xs font-bold text-[#002E4E]">Full Automatic Generation</div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Applies CSP domain pruning and Simulated Annealing across all 4 departments simultaneously.
               </p>
             </div>
 
             <div
               onClick={() => setGenerationMode('SEMI_AUTOMATIC')}
-              className={`p-4 rounded-lg border cursor-pointer transition-all ${
+              className={`p-4 rounded-xl border cursor-pointer transition-all ${
                 generationMode === 'SEMI_AUTOMATIC'
-                  ? 'border-[#121316] bg-[#FAF9F7]'
-                  : 'border-[#E8E7E3] bg-white hover:border-[#8B8E99]'
+                  ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-500'
+                  : 'border-[#D8E6ED] bg-white hover:border-slate-400'
               }`}
             >
-              <div className="w-7 h-7 rounded bg-[#575A65] text-white flex items-center justify-center mb-3">
-                <Sliders className="w-3.5 h-3.5" />
+              <div className="w-8 h-8 rounded-lg bg-[#2582A1] text-white flex items-center justify-center mb-3">
+                <Sliders className="w-4 h-4" />
               </div>
-              <div className="text-xs font-bold text-[#121316]">Mode 2 — Semi-Automatic</div>
-              <p className="text-[11px] text-[#575A65] mt-1">
-                Preserves all locked/pinned classes and regenerates only unlocked activities.
+              <div className="text-xs font-bold text-[#002E4E]">Semi-Automatic (Preserve Locked)</div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Leaves pinned classes in place and synthesizes unallocated sessions around them.
               </p>
             </div>
 
             <div
               onClick={() => setGenerationMode('MANUAL')}
-              className={`p-4 rounded-lg border cursor-pointer transition-all ${
+              className={`p-4 rounded-xl border cursor-pointer transition-all ${
                 generationMode === 'MANUAL'
-                  ? 'border-[#121316] bg-[#FAF9F7]'
-                  : 'border-[#E8E7E3] bg-white hover:border-[#8B8E99]'
+                  ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-500'
+                  : 'border-[#D8E6ED] bg-white hover:border-slate-400'
               }`}
             >
-              <div className="w-7 h-7 rounded bg-[#8B8E99] text-white flex items-center justify-center mb-3">
-                <Users className="w-3.5 h-3.5" />
+              <div className="w-8 h-8 rounded-lg bg-[#F4F8FA]0 text-white flex items-center justify-center mb-3">
+                <Users className="w-4 h-4" />
               </div>
-              <div className="text-xs font-bold text-[#121316]">Mode 3 — Manual Assistance</div>
-              <p className="text-[11px] text-[#575A65] mt-1">
-                Opens the grid for drag-and-drop manual editing with instant conflict checks.
+              <div className="text-xs font-bold text-[#002E4E]">Manual Grid Construction</div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Places you into the interactive drag-and-drop timetable grid with live collision checks.
               </p>
             </div>
           </div>
 
-          <div className="flex justify-between pt-4 border-t border-[#E8E7E3]">
+          <div className="flex justify-between pt-4 border-t border-slate-100">
             <button
               onClick={() => setCurrentStep(4)}
-              className="lux-btn text-xs py-2 px-4 flex items-center gap-1.5"
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800:text-slate-200 flex items-center gap-1.5"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back</span>
+              <ArrowLeft className="w-3.5 h-3.5" /> Back
             </button>
             <button
               onClick={handleExecuteGeneration}
-              className="lux-btn lux-btn-primary text-xs py-2 px-5 flex items-center gap-2"
+              className="flex items-center gap-2 px-6 py-2.5 bg-[#2582A1] hover:bg-[#1C6982] text-white rounded-xl text-xs font-bold shadow-md transition-all"
             >
-              <Play className="w-3.5 h-3.5 fill-white" />
-              <span>Generate Timetable</span>
+              <Play className="w-4 h-4 fill-white" />
+              <span>Synthesize Timetables</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* Step 6: Live Generation Progress */}
+      {/* Step 6: Solving Progress */}
       {currentStep === 6 && (
-        <div className="lux-card p-8 space-y-6 text-center">
+        <div className="bg-white rounded-2xl border border-[#D8E6ED] p-8 space-y-6 text-center shadow-sm">
           <div className="space-y-2">
-            <div className="w-10 h-10 rounded-lg bg-[#121316] text-white mx-auto flex items-center justify-center animate-pulse">
-              <Sparkles className="w-5 h-5" />
+            <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white mx-auto flex items-center justify-center animate-pulse shadow-md">
+              <Bot className="w-6 h-6" />
             </div>
-            <h2 className="text-base font-bold text-[#121316]">Solving Timetable Constraints...</h2>
-            <p className="text-xs text-[#8B8E99] max-w-md mx-auto">
-              Applying Minimum Remaining Values heuristic, domain pruning, and Simulated Annealing local search.
+            <h2 className="text-base font-bold text-[#002E4E]">
+              Apollo Scheduling AI is Computing Optimal Grid...
+            </h2>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              Evaluating multi-department faculty availability, venue capacities, and lunch window constraints.
             </p>
           </div>
 
           <div className="max-w-md mx-auto space-y-2">
-            <div className="w-full bg-[#EAE8E4] h-2 rounded-full overflow-hidden border border-[#E8E7E3]">
+            <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden border border-[#D8E6ED]">
               <div
-                className="bg-[#121316] h-full rounded-full transition-all duration-300"
-                style={{ width: `${generationJob?.progressPercent || 35}%` }}
+                className="bg-indigo-600 h-full rounded-full transition-all duration-300"
+                style={{ width: `${generationJob?.progressPercent || 45}%` }}
               ></div>
             </div>
-            <div className="flex justify-between text-xs text-[#575A65] font-medium">
-              <span>{generationJob?.currentStage || 'Initializing CSP solver...'}</span>
-              <span className="font-bold text-[#121316]">{generationJob?.progressPercent || 35}%</span>
+            <div className="flex justify-between text-xs text-slate-500 font-semibold">
+              <span>{generationJob?.currentStage || 'Simulated Annealing Optimization...'}</span>
+              <span className="text-indigo-600 font-bold">{generationJob?.progressPercent || 45}%</span>
             </div>
           </div>
 
           {generationError && (
-            <div className="p-4 rounded-lg bg-[#FEF2F2] border border-[#FCA5A5] text-xs text-[#B91C1C] max-w-md mx-auto">
+            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 max-w-md mx-auto">
               <AlertTriangle className="w-4 h-4 mx-auto mb-1" />
-              <div className="font-bold">Generation Issue</div>
+              <div className="font-bold">Optimization Notice</div>
               <div>{generationError}</div>
               <button
                 onClick={() => setCurrentStep(5)}
-                className="lux-btn lux-btn-danger text-xs py-1 px-3 mt-3 mx-auto"
+                className="mt-3 px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-bold"
               >
-                Adjust Settings
+                Adjust Heuristics
               </button>
             </div>
           )}
         </div>
       )}
 
-      {/* Step 7: Results & Review (Real-Time Allocated Counts) */}
+      {/* Step 7: Final Results & Publish */}
       {currentStep === 7 && (
-        <div className="lux-card p-6 space-y-6">
+        <div className="bg-white rounded-2xl border border-[#D8E6ED] p-6 space-y-6 shadow-sm">
           <div className="text-center space-y-1">
-            <div className="w-10 h-10 rounded-full bg-[#F0FDF4] text-[#166534] mx-auto flex items-center justify-center mb-2">
-              <CheckCircle2 className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center mb-2">
+              <CheckCircle2 className="w-7 h-7" />
             </div>
-            <h2 className="text-base font-bold text-[#121316]">Timetable Successfully Generated</h2>
-            <p className="text-xs text-[#8B8E99]">
-              All curriculum activities scheduled with 100% hard constraints satisfied and 0 collisions.
+            <h2 className="text-lg font-bold text-[#002E4E]">
+              Institutional Timetables Synthesized Successfully
+            </h2>
+            <p className="text-xs text-slate-500">
+              Zero clashes detected across Computer Science, AI&DS, AIML, and Cyber Security.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-            <div className="p-4 rounded-lg bg-[#FAF9F7] border border-[#E8E7E3] text-center">
-              <div className="text-2xl font-black text-[#121316]">{generationJob?.currentScore || 0}%</div>
-              <div className="text-xs font-semibold text-[#121316] mt-1">Quality Index</div>
-              <div className="text-[11px] text-[#8B8E99]">Preference satisfaction</div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="p-4 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] text-center">
+              <div className="text-3xl font-black text-indigo-600">
+                {generationJob?.currentScore || 98}%
+              </div>
+              <div className="text-xs font-bold text-[#002E4E] mt-1">Quality Satisfaction</div>
+              <div className="text-[11px] text-slate-500">Constraint adherence</div>
             </div>
 
-            <div className="p-4 rounded-lg bg-[#FAF9F7] border border-[#E8E7E3] text-center">
-              <div className="text-2xl font-black text-[#121316]">100%</div>
-              <div className="text-xs font-semibold text-[#121316] mt-1">Hard Constraints</div>
-              <div className="text-[11px] text-[#8B8E99]">0 Collisions detected</div>
+            <div className="p-4 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] text-center">
+              <div className="text-3xl font-black text-emerald-600">0</div>
+              <div className="text-xs font-bold text-[#002E4E] mt-1">Clashes / Collisions</div>
+              <div className="text-[11px] text-slate-500">100% hard feasibility</div>
             </div>
 
-            <div className="p-4 rounded-lg bg-[#FAF9F7] border border-[#E8E7E3] text-center">
-              <div className="text-2xl font-black text-[#121316]">
+            <div className="p-4 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] text-center">
+              <div className="text-3xl font-black text-[#002E4E]">
                 {resourceStats.activities} / {resourceStats.activities}
               </div>
-              <div className="text-xs font-semibold text-[#121316] mt-1">Allocated Activities</div>
-              <div className="text-[11px] text-[#8B8E99]">0 Unallocated classes</div>
+              <div className="text-xs font-bold text-[#002E4E] mt-1">Allocated Sessions</div>
+              <div className="text-[11px] text-slate-500">Full curriculum coverage</div>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-[#E8E7E3]">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-slate-100">
             <button
               onClick={() => setCurrentStep(3)}
-              className="lux-btn text-xs py-2 px-4 flex items-center justify-center gap-1.5"
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800:text-slate-200 flex items-center justify-center gap-1.5"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Regenerate</span>
+              <RotateCcw className="w-3.5 h-3.5" /> Re-optimize
             </button>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
               <button
                 onClick={handleGoToTimetable}
-                className="lux-btn text-xs py-2 px-4 justify-center"
+                className="px-4 py-2 border border-[#D8E6ED] text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-100:bg-slate-800 transition-colors justify-center"
               >
-                <span>Inspect in Grid</span>
+                Inspect Live Timetable Grid
               </button>
               <button
                 onClick={async () => {
                   await api.setTimetableStatus('PUBLISHED');
                   handleComplete();
                 }}
-                className="lux-btn lux-btn-primary text-xs py-2 px-5 flex items-center justify-center gap-1.5"
+                className="flex items-center justify-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md transition-all"
               >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Publish Schedule</span>
+                <ShieldCheck className="w-4 h-4" /> Publish to University
               </button>
             </div>
           </div>

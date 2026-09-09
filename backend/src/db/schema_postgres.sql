@@ -1,54 +1,16 @@
--- ===================================================
--- THE APOLLO UNIVERSITY - POSTGRESQL RELATIONAL SCHEMA
--- ===================================================
+-- =====================================================
+-- THE APOLLO UNIVERSITY — NEON POSTGRESQL SCHEMA
+-- Safe / Idempotent: CREATE TABLE IF NOT EXISTS only
+-- No DROP TABLE — runs safely on every server startup
+-- =====================================================
 
--- Clean and drop all existing tables in proper dependency order
-DROP TABLE IF EXISTS uploaded_files CASCADE;
-DROP TABLE IF EXISTS fet_import_history CASCADE;
-DROP TABLE IF EXISTS audit_logs CASCADE;
-DROP TABLE IF EXISTS generation_jobs CASCADE;
-DROP TABLE IF EXISTS conflicts CASCADE;
-DROP TABLE IF EXISTS timetable_versions CASCADE;
-DROP TABLE IF EXISTS timetable_entries CASCADE;
-DROP TABLE IF EXISTS timetables CASCADE;
-DROP TABLE IF EXISTS smart_preference_rules CASCADE;
-DROP TABLE IF EXISTS preference_profiles CASCADE;
-DROP TABLE IF EXISTS entity_availability CASCADE;
-DROP TABLE IF EXISTS activity_relations CASCADE;
-DROP TABLE IF EXISTS activity_required_equipment CASCADE;
-DROP TABLE IF EXISTS activity_student_assignments CASCADE;
-DROP TABLE IF EXISTS activity_teacher_assignments CASCADE;
-DROP TABLE IF EXISTS activities CASCADE;
-DROP TABLE IF EXISTS course_required_equipment CASCADE;
-DROP TABLE IF EXISTS courses CASCADE;
-DROP TABLE IF EXISTS time_slots CASCADE;
-DROP TABLE IF EXISTS room_equipment CASCADE;
-DROP TABLE IF EXISTS equipment CASCADE;
-DROP TABLE IF EXISTS rooms CASCADE;
-DROP TABLE IF EXISTS buildings CASCADE;
-DROP TABLE IF EXISTS students CASCADE;
-DROP TABLE IF EXISTS teacher_qualifications CASCADE;
-DROP TABLE IF EXISTS teachers CASCADE;
-DROP TABLE IF EXISTS student_subgroups CASCADE;
-DROP TABLE IF EXISTS student_groups CASCADE;
-DROP TABLE IF EXISTS sections CASCADE;
-DROP TABLE IF EXISTS batches CASCADE;
-DROP TABLE IF EXISTS semesters CASCADE;
-DROP TABLE IF EXISTS academic_years CASCADE;
-DROP TABLE IF EXISTS programs CASCADE;
-DROP TABLE IF EXISTS departments CASCADE;
-DROP TABLE IF EXISTS faculties CASCADE;
-DROP TABLE IF EXISTS campuses CASCADE;
-DROP TABLE IF EXISTS universities CASCADE;
-DROP TABLE IF EXISTS users CASCADE;
-
--- 1. Users & RBAC with Authentication
-CREATE TABLE users (
+-- 1. Users & RBAC
+CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(100) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) DEFAULT 'pbkdf2_sha256$apollo_demo_hash',
-    role VARCHAR(50) NOT NULL CHECK (role IN ('SUPER_ADMIN', 'UNIVERSITY_ADMIN', 'DEPARTMENT_ADMIN', 'TIMETABLE_COORDINATOR', 'FACULTY', 'STUDENT')),
+    password_hash VARCHAR(255) DEFAULT '',
+    role VARCHAR(50) NOT NULL CHECK (role IN ('SUPER_ADMIN', 'UNIVERSITY_ADMIN', 'DEPARTMENT_ADMIN', 'TIMETABLE_COORDINATOR', 'DEAN', 'HOD', 'FACULTY', 'STUDENT')),
     department_id VARCHAR(100),
     faculty_id VARCHAR(100),
     teacher_id VARCHAR(100),
@@ -56,15 +18,15 @@ CREATE TABLE users (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. Universities & Institutional Hierarchy
-CREATE TABLE universities (
+-- 2. Universities & Hierarchy
+CREATE TABLE IF NOT EXISTS universities (
     id VARCHAR(100) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     code VARCHAR(50) UNIQUE NOT NULL,
     address TEXT
 );
 
-CREATE TABLE campuses (
+CREATE TABLE IF NOT EXISTS campuses (
     id VARCHAR(100) PRIMARY KEY,
     university_id VARCHAR(100) NOT NULL REFERENCES universities(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
@@ -72,7 +34,7 @@ CREATE TABLE campuses (
     location TEXT
 );
 
-CREATE TABLE faculties (
+CREATE TABLE IF NOT EXISTS faculties (
     id VARCHAR(100) PRIMARY KEY,
     campus_id VARCHAR(100) NOT NULL REFERENCES campuses(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
@@ -80,7 +42,7 @@ CREATE TABLE faculties (
     dean_name VARCHAR(255)
 );
 
-CREATE TABLE departments (
+CREATE TABLE IF NOT EXISTS departments (
     id VARCHAR(100) PRIMARY KEY,
     faculty_id VARCHAR(100) NOT NULL REFERENCES faculties(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
@@ -88,7 +50,7 @@ CREATE TABLE departments (
     head_of_department VARCHAR(255)
 );
 
-CREATE TABLE programs (
+CREATE TABLE IF NOT EXISTS programs (
     id VARCHAR(100) PRIMARY KEY,
     department_id VARCHAR(100) NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
@@ -97,7 +59,7 @@ CREATE TABLE programs (
     total_semesters INTEGER NOT NULL DEFAULT 8
 );
 
-CREATE TABLE academic_years (
+CREATE TABLE IF NOT EXISTS academic_years (
     id VARCHAR(100) PRIMARY KEY,
     university_id VARCHAR(100) NOT NULL REFERENCES universities(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
@@ -106,7 +68,7 @@ CREATE TABLE academic_years (
     is_current INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE TABLE semesters (
+CREATE TABLE IF NOT EXISTS semesters (
     id VARCHAR(100) PRIMARY KEY,
     academic_year_id VARCHAR(100) NOT NULL REFERENCES academic_years(id) ON DELETE CASCADE,
     program_id VARCHAR(100) NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
@@ -115,7 +77,7 @@ CREATE TABLE semesters (
     is_odd INTEGER NOT NULL DEFAULT 1
 );
 
-CREATE TABLE batches (
+CREATE TABLE IF NOT EXISTS batches (
     id VARCHAR(100) PRIMARY KEY,
     program_id VARCHAR(100) NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
     academic_year_id VARCHAR(100) NOT NULL REFERENCES academic_years(id) ON DELETE CASCADE,
@@ -124,22 +86,25 @@ CREATE TABLE batches (
     total_students INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE TABLE sections (
+CREATE TABLE IF NOT EXISTS sections (
     id VARCHAR(100) PRIMARY KEY,
     batch_id VARCHAR(100) NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
     semester_id VARCHAR(100) NOT NULL REFERENCES semesters(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
-    student_count INTEGER NOT NULL DEFAULT 60
+    student_count INTEGER NOT NULL DEFAULT 60,
+    department_id VARCHAR(100),
+    home_room_id VARCHAR(100),
+    class_teacher_id VARCHAR(100)
 );
 
-CREATE TABLE student_groups (
+CREATE TABLE IF NOT EXISTS student_groups (
     id VARCHAR(100) PRIMARY KEY,
     section_id VARCHAR(100) NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     student_count INTEGER NOT NULL DEFAULT 30
 );
 
-CREATE TABLE student_subgroups (
+CREATE TABLE IF NOT EXISTS student_subgroups (
     id VARCHAR(100) PRIMARY KEY,
     group_id VARCHAR(100) NOT NULL REFERENCES student_groups(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
@@ -147,14 +112,15 @@ CREATE TABLE student_subgroups (
 );
 
 -- 3. Teachers & Qualifications
-CREATE TABLE teachers (
+CREATE TABLE IF NOT EXISTS teachers (
     id VARCHAR(100) PRIMARY KEY,
     employee_id VARCHAR(100) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     phone VARCHAR(50),
     department_id VARCHAR(100) NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
-    designation VARCHAR(100) NOT NULL,
+    department_ids_json TEXT,
+    designation VARCHAR(100) NOT NULL DEFAULT 'Assistant Professor',
     max_hours_per_day INTEGER NOT NULL DEFAULT 5,
     max_hours_per_week INTEGER NOT NULL DEFAULT 20,
     min_hours_per_day INTEGER NOT NULL DEFAULT 1,
@@ -164,18 +130,22 @@ CREATE TABLE teachers (
     min_rest_hours_between_days INTEGER DEFAULT 12,
     max_gaps_per_day INTEGER NOT NULL DEFAULT 2,
     max_gaps_per_week INTEGER NOT NULL DEFAULT 6,
+    available_start_time VARCHAR(10) DEFAULT '09:00',
+    available_end_time VARCHAR(10) DEFAULT '17:00',
+    lunch_break_period INTEGER DEFAULT 4,
+    unavailable_slots_json TEXT,
     home_room_id VARCHAR(100),
     home_building_id VARCHAR(100)
 );
 
-CREATE TABLE teacher_qualifications (
+CREATE TABLE IF NOT EXISTS teacher_qualifications (
     id VARCHAR(100) PRIMARY KEY,
     teacher_id VARCHAR(100) NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
     course_id VARCHAR(100) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE students (
+CREATE TABLE IF NOT EXISTS students (
     id VARCHAR(100) PRIMARY KEY,
     roll_number VARCHAR(100) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
@@ -186,8 +156,8 @@ CREATE TABLE students (
     subgroup_id VARCHAR(100) REFERENCES student_subgroups(id) ON DELETE SET NULL
 );
 
--- 4. Infrastructure (Buildings, Rooms, Equipment)
-CREATE TABLE buildings (
+-- 4. Infrastructure
+CREATE TABLE IF NOT EXISTS buildings (
     id VARCHAR(100) PRIMARY KEY,
     campus_id VARCHAR(100) NOT NULL REFERENCES campuses(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
@@ -195,32 +165,32 @@ CREATE TABLE buildings (
     total_floors INTEGER NOT NULL DEFAULT 3
 );
 
-CREATE TABLE rooms (
+CREATE TABLE IF NOT EXISTS rooms (
     id VARCHAR(100) PRIMARY KEY,
     building_id VARCHAR(100) NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     code VARCHAR(50) NOT NULL,
     floor INTEGER NOT NULL DEFAULT 1,
     capacity INTEGER NOT NULL DEFAULT 60,
-    room_type VARCHAR(50) NOT NULL,
+    room_type VARCHAR(50) NOT NULL DEFAULT 'CLASSROOM',
     is_accessible INTEGER NOT NULL DEFAULT 1,
     department_id VARCHAR(100) REFERENCES departments(id) ON DELETE SET NULL
 );
 
-CREATE TABLE equipment (
+CREATE TABLE IF NOT EXISTS equipment (
     id VARCHAR(100) PRIMARY KEY,
     name VARCHAR(255) UNIQUE NOT NULL,
     description TEXT
 );
 
-CREATE TABLE room_equipment (
+CREATE TABLE IF NOT EXISTS room_equipment (
     id VARCHAR(100) PRIMARY KEY,
     room_id VARCHAR(100) NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
     equipment_name VARCHAR(255) NOT NULL
 );
 
--- 5. Time Slots & Master Calendar
-CREATE TABLE time_slots (
+-- 5. Time Slots
+CREATE TABLE IF NOT EXISTS time_slots (
     id VARCHAR(100) PRIMARY KEY,
     day_of_week INTEGER NOT NULL,
     day_name VARCHAR(50) NOT NULL,
@@ -233,7 +203,7 @@ CREATE TABLE time_slots (
 );
 
 -- 6. Courses & Activities
-CREATE TABLE courses (
+CREATE TABLE IF NOT EXISTS courses (
     id VARCHAR(100) PRIMARY KEY,
     code VARCHAR(50) NOT NULL,
     name VARCHAR(255) NOT NULL,
@@ -249,13 +219,13 @@ CREATE TABLE courses (
     required_room_type VARCHAR(50) NOT NULL DEFAULT 'CLASSROOM'
 );
 
-CREATE TABLE course_required_equipment (
+CREATE TABLE IF NOT EXISTS course_required_equipment (
     id VARCHAR(100) PRIMARY KEY,
     course_id VARCHAR(100) NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
     equipment_name VARCHAR(255) NOT NULL
 );
 
-CREATE TABLE activities (
+CREATE TABLE IF NOT EXISTS activities (
     id VARCHAR(100) PRIMARY KEY,
     code VARCHAR(100) NOT NULL,
     name VARCHAR(255) NOT NULL,
@@ -273,16 +243,17 @@ CREATE TABLE activities (
     locked_day INTEGER,
     locked_period INTEGER,
     locked_room_id VARCHAR(100) REFERENCES rooms(id) ON DELETE SET NULL,
-    split_from_activity_id VARCHAR(100)
+    split_from_activity_id VARCHAR(100),
+    total_student_count INTEGER DEFAULT 60
 );
 
-CREATE TABLE activity_teacher_assignments (
+CREATE TABLE IF NOT EXISTS activity_teacher_assignments (
     id VARCHAR(100) PRIMARY KEY,
     activity_id VARCHAR(100) NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
     teacher_id VARCHAR(100) NOT NULL REFERENCES teachers(id) ON DELETE CASCADE
 );
 
-CREATE TABLE activity_student_assignments (
+CREATE TABLE IF NOT EXISTS activity_student_assignments (
     id VARCHAR(100) PRIMARY KEY,
     activity_id VARCHAR(100) NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
     section_id VARCHAR(100) REFERENCES sections(id) ON DELETE CASCADE,
@@ -290,13 +261,13 @@ CREATE TABLE activity_student_assignments (
     subgroup_id VARCHAR(100) REFERENCES student_subgroups(id) ON DELETE CASCADE
 );
 
-CREATE TABLE activity_required_equipment (
+CREATE TABLE IF NOT EXISTS activity_required_equipment (
     id VARCHAR(100) PRIMARY KEY,
     activity_id VARCHAR(100) NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
     equipment_name VARCHAR(255) NOT NULL
 );
 
-CREATE TABLE activity_relations (
+CREATE TABLE IF NOT EXISTS activity_relations (
     id VARCHAR(100) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     relation_type VARCHAR(100) NOT NULL,
@@ -307,18 +278,18 @@ CREATE TABLE activity_relations (
     weight INTEGER NOT NULL DEFAULT 100
 );
 
--- 7. Availability Matrices
-CREATE TABLE entity_availability (
+-- 7. Availability
+CREATE TABLE IF NOT EXISTS entity_availability (
     id VARCHAR(100) PRIMARY KEY,
-    entity_type VARCHAR(50) NOT NULL CHECK (entity_type IN ('TEACHER', 'STUDENT_SECTION', 'STUDENT_GROUP', 'ROOM', 'ACTIVITY')),
+    entity_type VARCHAR(50) NOT NULL,
     entity_id VARCHAR(100) NOT NULL,
     day_of_week INTEGER NOT NULL,
     period_index INTEGER NOT NULL,
-    state VARCHAR(50) NOT NULL CHECK (state IN ('UNAVAILABLE', 'DISCOURAGED', 'NEUTRAL', 'PREFERRED', 'STRONGLY_PREFERRED'))
+    state VARCHAR(50) NOT NULL
 );
 
--- 8. Smart Preferences & Presets
-CREATE TABLE preference_profiles (
+-- 8. Smart Preferences
+CREATE TABLE IF NOT EXISTS preference_profiles (
     id VARCHAR(100) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     profile_type VARCHAR(100) NOT NULL,
@@ -328,23 +299,23 @@ CREATE TABLE preference_profiles (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE smart_preference_rules (
+CREATE TABLE IF NOT EXISTS smart_preference_rules (
     id VARCHAR(100) PRIMARY KEY,
     profile_id VARCHAR(100) NOT NULL REFERENCES preference_profiles(id) ON DELETE CASCADE,
-    category VARCHAR(50) NOT NULL CHECK (category IN ('STUDENT', 'TEACHER', 'ROOM', 'UNIVERSITY')),
+    category VARCHAR(50) NOT NULL,
     rule_code VARCHAR(100) NOT NULL,
     name VARCHAR(255) NOT NULL,
     description TEXT NOT NULL,
     target_scope VARCHAR(50) NOT NULL DEFAULT 'GLOBAL',
     target_id VARCHAR(100),
     parameter_value_json TEXT,
-    priority VARCHAR(50) NOT NULL CHECK (priority IN ('HARD', 'VERY_HIGH', 'HIGH', 'MEDIUM', 'LOW')),
+    priority VARCHAR(50) NOT NULL,
     weight INTEGER NOT NULL DEFAULT 50,
     is_enabled INTEGER NOT NULL DEFAULT 1
 );
 
--- 9. Timetables, Versions, Entries, Conflicts & Jobs
-CREATE TABLE timetables (
+-- 9. Timetables
+CREATE TABLE IF NOT EXISTS timetables (
     id VARCHAR(100) PRIMARY KEY,
     academic_year_id VARCHAR(100) NOT NULL REFERENCES academic_years(id) ON DELETE CASCADE,
     department_id VARCHAR(100) REFERENCES departments(id) ON DELETE SET NULL,
@@ -360,7 +331,7 @@ CREATE TABLE timetables (
     published_at TIMESTAMP WITH TIME ZONE
 );
 
-CREATE TABLE timetable_entries (
+CREATE TABLE IF NOT EXISTS timetable_entries (
     id VARCHAR(100) PRIMARY KEY,
     timetable_id VARCHAR(100) NOT NULL REFERENCES timetables(id) ON DELETE CASCADE,
     activity_id VARCHAR(100) NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
@@ -373,7 +344,7 @@ CREATE TABLE timetable_entries (
     violated_soft_preferences_json TEXT
 );
 
-CREATE TABLE timetable_versions (
+CREATE TABLE IF NOT EXISTS timetable_versions (
     id VARCHAR(100) PRIMARY KEY,
     timetable_id VARCHAR(100) NOT NULL REFERENCES timetables(id) ON DELETE CASCADE,
     version_number INTEGER NOT NULL,
@@ -388,7 +359,7 @@ CREATE TABLE timetable_versions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE conflicts (
+CREATE TABLE IF NOT EXISTS conflicts (
     id VARCHAR(100) PRIMARY KEY,
     timetable_id VARCHAR(100) NOT NULL REFERENCES timetables(id) ON DELETE CASCADE,
     severity VARCHAR(50) NOT NULL,
@@ -405,13 +376,13 @@ CREATE TABLE conflicts (
     suggested_fix TEXT
 );
 
-CREATE TABLE generation_jobs (
+CREATE TABLE IF NOT EXISTS generation_jobs (
     id VARCHAR(100) PRIMARY KEY,
     timetable_id VARCHAR(100) NOT NULL REFERENCES timetables(id) ON DELETE CASCADE,
     mode VARCHAR(50) NOT NULL DEFAULT 'AUTOMATIC',
     status VARCHAR(50) NOT NULL DEFAULT 'QUEUED',
     progress_percent INTEGER NOT NULL DEFAULT 0,
-    current_stage VARCHAR(100) NOT NULL DEFAULT 'Initialized',
+    current_stage VARCHAR(255) NOT NULL DEFAULT 'Initialized',
     current_score DOUBLE PRECISION NOT NULL DEFAULT 0.0,
     best_score DOUBLE PRECISION NOT NULL DEFAULT 0.0,
     conflicts_count INTEGER NOT NULL DEFAULT 0,
@@ -420,8 +391,8 @@ CREATE TABLE generation_jobs (
     error_message TEXT
 );
 
--- 10. Audit Logs, File Uploads & Imports
-CREATE TABLE audit_logs (
+-- 10. Audit & Files
+CREATE TABLE IF NOT EXISTS audit_logs (
     id VARCHAR(100) PRIMARY KEY,
     user_id VARCHAR(100) NOT NULL,
     user_name VARCHAR(255) NOT NULL,
@@ -433,7 +404,7 @@ CREATE TABLE audit_logs (
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE fet_import_history (
+CREATE TABLE IF NOT EXISTS fet_import_history (
     id VARCHAR(100) PRIMARY KEY,
     file_name VARCHAR(255) NOT NULL,
     imported_by VARCHAR(255) NOT NULL,
@@ -444,7 +415,7 @@ CREATE TABLE fet_import_history (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE uploaded_files (
+CREATE TABLE IF NOT EXISTS uploaded_files (
     id VARCHAR(100) PRIMARY KEY,
     file_name VARCHAR(255) NOT NULL,
     file_type VARCHAR(100) NOT NULL,
@@ -454,9 +425,31 @@ CREATE TABLE uploaded_files (
     uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Performance indexes
-CREATE INDEX idx_activities_course ON activities(course_id);
-CREATE INDEX idx_rooms_building ON rooms(building_id);
-CREATE INDEX idx_timetable_entries_pos ON timetable_entries(timetable_id, day_of_week, period_index);
-CREATE INDEX idx_availability_lookup ON entity_availability(entity_type, entity_id, day_of_week, period_index);
-CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_activities_course ON activities(course_id);
+CREATE INDEX IF NOT EXISTS idx_rooms_building ON rooms(building_id);
+CREATE INDEX IF NOT EXISTS idx_timetable_entries_pos ON timetable_entries(timetable_id, day_of_week, period_index);
+CREATE INDEX IF NOT EXISTS idx_availability_lookup ON entity_availability(entity_type, entity_id, day_of_week, period_index);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+-- Ensure all columns exist on pre-existing tables
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS home_room_id VARCHAR(100);
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS class_teacher_id VARCHAR(100);
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS department_id VARCHAR(100);
+ALTER TABLE sections ADD COLUMN IF NOT EXISTS student_count INTEGER DEFAULT 60;
+
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS department_ids_json TEXT;
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS designation VARCHAR(150);
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS max_hours_per_day INTEGER DEFAULT 5;
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS available_start_time VARCHAR(10) DEFAULT '09:00';
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS available_end_time VARCHAR(10) DEFAULT '17:00';
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS lunch_break_period INTEGER DEFAULT 4;
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS unavailable_slots_json TEXT;
+
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS total_student_count INTEGER DEFAULT 60;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS subject_code VARCHAR(50);
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS subject_name VARCHAR(255);
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS duration_periods INTEGER DEFAULT 1;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS occurrences_per_week INTEGER DEFAULT 3;
+
+ALTER TABLE time_slots ADD COLUMN IF NOT EXISTS year_number INTEGER DEFAULT 0;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS department_id VARCHAR(100);

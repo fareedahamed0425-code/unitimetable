@@ -1,4 +1,4 @@
-import { db, runInTransaction, writeThroughPg } from '../db/database';
+import { pgQuery, pgExecute, pgTransaction } from '../db/database';
 import { ParsedTimetableEntity } from './types';
 
 export interface DatabaseUpdateResult {
@@ -11,14 +11,14 @@ export interface DatabaseUpdateResult {
 }
 
 /**
- * Persists parsed timetable entities into SQLite & PostgreSQL cleanly and idempotently.
+ * Persists parsed timetable entities into Neon PostgreSQL cleanly and idempotently.
  */
-export function updateDatabaseWithTimetables(
+export async function updateDatabaseWithTimetables(
   timetables: ParsedTimetableEntity[],
   timetableId: string = 'tt-active',
   clearExisting: boolean = true
-): DatabaseUpdateResult {
-  return runInTransaction(() => {
+): Promise<DatabaseUpdateResult> {
+  return pgTransaction(async (client) => {
     let sectionsCount = 0;
     let coursesCount = 0;
     let teachersCount = 0;
@@ -26,56 +26,46 @@ export function updateDatabaseWithTimetables(
     let activitiesCount = 0;
     let entriesCount = 0;
 
+    const q = (sql: string, params?: any[]) => client.query(sql, params);
+
     // 0. Clear existing entries if requested
     if (clearExisting) {
-      db.prepare('DELETE FROM timetable_entries WHERE timetable_id = ?').run(timetableId);
-      db.prepare('DELETE FROM conflicts WHERE timetable_id = ?').run(timetableId);
-      writeThroughPg('DELETE FROM timetable_entries WHERE timetable_id = ?', [timetableId]);
-      writeThroughPg('DELETE FROM conflicts WHERE timetable_id = ?', [timetableId]);
+      await q('DELETE FROM timetable_entries WHERE timetable_id = $1', [timetableId]);
+      await q('DELETE FROM conflicts WHERE timetable_id = $1', [timetableId]);
     }
 
     // 1. Resolve Academic Year and Campus
-    const currentAy = (db.prepare('SELECT id FROM academic_years WHERE is_current = 1').get() as any)?.id ||
-                      (db.prepare('SELECT id FROM academic_years').get() as any)?.id || 'ay-2026-2027';
+    const ayRow = await q('SELECT id FROM academic_years WHERE is_current = 1');
+    const ayRow2 = ayRow.rows.length === 0 ? await q('SELECT id FROM academic_years LIMIT 1') : ayRow;
+    const currentAy = ayRow2.rows[0]?.id || 'ay-2026-2027';
 
-    const currentCampus = (db.prepare('SELECT id FROM campuses').get() as any)?.id || 'campus-main';
+    const campusRow = await q('SELECT id FROM campuses LIMIT 1');
+    const currentCampus = campusRow.rows[0]?.id || 'campus-main';
     const bldMain = 'bld-apollo-tech';
 
     // Ensure Main Building exists
-    db.prepare(`
+    await q(`
       INSERT INTO buildings (id, campus_id, name, code, total_floors)
-      VALUES (?, ?, 'Apollo Technology Tower', 'APOLLO-TOW', 5)
-      ON CONFLICT (id) DO NOTHING
-    `).run(bldMain, currentCampus);
-
-    writeThroughPg(`
-      INSERT INTO buildings (id, campus_id, name, code, total_floors)
-      VALUES (?, ?, 'Apollo Technology Tower', 'APOLLO-TOW', 5)
+      VALUES ($1, $2, 'Apollo Technology Tower', 'APOLLO-TOW', 5)
       ON CONFLICT (id) DO NOTHING
     `, [bldMain, currentCampus]);
 
     // Ensure Timetable record exists
-    db.prepare(`
+    await q(`
       INSERT INTO timetables (id, academic_year_id, name, status, generation_mode, created_by)
-      VALUES (?, ?, 'The Apollo University Master Timetable', 'PUBLISHED', 'AUTOMATIC', 'Admin Coordinator')
-      ON CONFLICT (id) DO NOTHING
-    `).run(timetableId, currentAy);
-
-    writeThroughPg(`
-      INSERT INTO timetables (id, academic_year_id, name, status, generation_mode, created_by)
-      VALUES (?, ?, 'The Apollo University Master Timetable', 'PUBLISHED', 'AUTOMATIC', 'Admin Coordinator')
+      VALUES ($1, $2, 'The Apollo University Master Timetable', 'PUBLISHED', 'AUTOMATIC', 'Admin Coordinator')
       ON CONFLICT (id) DO NOTHING
     `, [timetableId, currentAy]);
 
     // Pre-cache existing IDs
     const existingDepts = new Map<string, string>();
-    (db.prepare('SELECT id, code FROM departments').all() as any[]).forEach(d => {
+    (await q('SELECT id, code FROM departments')).rows.forEach((d: any) => {
       existingDepts.set(d.code.toUpperCase().trim(), d.id);
       existingDepts.set(d.id.toLowerCase().trim(), d.id);
     });
 
     const existingPrograms = new Map<string, string>();
-    (db.prepare('SELECT id, department_id FROM programs').all() as any[]).forEach(p => {
+    (await q('SELECT id, department_id FROM programs')).rows.forEach((p: any) => {
       existingPrograms.set(p.department_id, p.id);
       existingPrograms.set(p.id, p.id);
     });
@@ -93,42 +83,40 @@ export function updateDatabaseWithTimetables(
     };
 
     const existingSections = new Map<string, string>();
-    (db.prepare('SELECT id, name FROM sections').all() as any[]).forEach(s => {
+    (await q('SELECT id, name FROM sections')).rows.forEach((s: any) => {
       existingSections.set(s.name.toUpperCase().trim(), s.id);
     });
 
     const existingTeachers = new Map<string, string>();
-    (db.prepare('SELECT id, name FROM teachers').all() as any[]).forEach(t => {
+    (await q('SELECT id, name FROM teachers')).rows.forEach((t: any) => {
       existingTeachers.set(t.name.toLowerCase().trim(), t.id);
     });
 
     const existingCourses = new Map<string, string>();
-    (db.prepare('SELECT id, code FROM courses').all() as any[]).forEach(c => {
+    (await q('SELECT id, code FROM courses')).rows.forEach((c: any) => {
       existingCourses.set(c.code.toUpperCase().trim(), c.id);
     });
 
     const existingRooms = new Map<string, string>();
-    (db.prepare('SELECT id, code FROM rooms').all() as any[]).forEach(r => {
+    (await q('SELECT id, code FROM rooms')).rows.forEach((r: any) => {
       existingRooms.set(r.code.toUpperCase().trim(), r.id);
     });
 
-    // If not clearExisting, clear old entries for the affected sections to prevent duplicate overlaps
+    // If not clearExisting, clear old entries for the affected sections
     if (!clearExisting) {
       const targetSectionNames = Array.from(
         new Set(timetables.flatMap(t => t.sessions.flatMap(s => s.sectionNames)))
       );
-
       for (const secName of targetSectionNames) {
         const sId = existingSections.get(secName.toUpperCase());
         if (sId) {
-          const actIds = (db.prepare(`
-            SELECT activity_id FROM activity_student_assignments WHERE section_id = ?
-          `).all(sId) as any[]).map(a => a.activity_id);
-
+          const actRows = await q(
+            'SELECT activity_id FROM activity_student_assignments WHERE section_id = $1', [sId]
+          );
+          const actIds = actRows.rows.map((a: any) => a.activity_id);
           if (actIds.length > 0) {
-            const placeholders = actIds.map(() => '?').join(',');
-            db.prepare(`DELETE FROM timetable_entries WHERE timetable_id = ? AND activity_id IN (${placeholders})`).run(timetableId, ...actIds);
-            writeThroughPg(`DELETE FROM timetable_entries WHERE timetable_id = ? AND activity_id IN (${placeholders})`, [timetableId, ...actIds]);
+            const placeholders = actIds.map((_: any, i: number) => `$${i + 2}`).join(',');
+            await q(`DELETE FROM timetable_entries WHERE timetable_id = $1 AND activity_id IN (${placeholders})`, [timetableId, ...actIds]);
           }
         }
       }
@@ -140,83 +128,52 @@ export function updateDatabaseWithTimetables(
       const { deptId, progId } = getDeptAndProg(meta.resolvedDeptCode);
       const yearNum = meta.resolvedYearNumber || 3;
       const batchId = `batch-${deptId.replace('dept-', '')}-y${yearNum}`;
-      const semNumber = yearNum * 2 - 1; // e.g. Year 3 -> Sem 5
+      const semNumber = yearNum * 2 - 1;
       const semId = `sem-${deptId.replace('dept-', '')}-${semNumber}`;
 
-      // Ensure Department exists
-      db.prepare(`
+      // Ensure Department
+      await q(`
         INSERT INTO departments (id, faculty_id, name, code, head_of_department)
-        VALUES (?, 'faculty-engineering', ?, ?, 'Head of Department')
-        ON CONFLICT (id) DO NOTHING
-      `).run(deptId, `Department of ${meta.resolvedDeptCode.toUpperCase()}`, meta.resolvedDeptCode.toUpperCase());
-
-      writeThroughPg(`
-        INSERT INTO departments (id, faculty_id, name, code, head_of_department)
-        VALUES (?, 'faculty-engineering', ?, ?, 'Head of Department')
+        VALUES ($1, 'faculty-engineering', $2, $3, 'Head of Department')
         ON CONFLICT (id) DO NOTHING
       `, [deptId, `Department of ${meta.resolvedDeptCode.toUpperCase()}`, meta.resolvedDeptCode.toUpperCase()]);
 
-      // Ensure Program exists
-      db.prepare(`
+      // Ensure Program
+      await q(`
         INSERT INTO programs (id, department_id, name, code, degree, total_semesters)
-        VALUES (?, ?, ?, ?, 'B.Tech', 8)
-        ON CONFLICT (id) DO NOTHING
-      `).run(progId, deptId, `B.Tech in ${meta.resolvedDeptCode.toUpperCase()}`, `BTECH-${meta.resolvedDeptCode.toUpperCase()}`);
-
-      writeThroughPg(`
-        INSERT INTO programs (id, department_id, name, code, degree, total_semesters)
-        VALUES (?, ?, ?, ?, 'B.Tech', 8)
+        VALUES ($1, $2, $3, $4, 'B.Tech', 8)
         ON CONFLICT (id) DO NOTHING
       `, [progId, deptId, `B.Tech in ${meta.resolvedDeptCode.toUpperCase()}`, `BTECH-${meta.resolvedDeptCode.toUpperCase()}`]);
 
-      // Ensure Batch exists
-      db.prepare(`
+      // Ensure Batch
+      await q(`
         INSERT INTO batches (id, program_id, academic_year_id, name, start_year, total_students)
-        VALUES (?, ?, ?, ?, ?, 120)
-        ON CONFLICT (id) DO NOTHING
-      `).run(batchId, progId, currentAy, `Year ${yearNum} (${meta.resolvedDeptCode.toUpperCase()})`, 2026 - yearNum + 1);
-
-      writeThroughPg(`
-        INSERT INTO batches (id, program_id, academic_year_id, name, start_year, total_students)
-        VALUES (?, ?, ?, ?, ?, 120)
+        VALUES ($1, $2, $3, $4, $5, 120)
         ON CONFLICT (id) DO NOTHING
       `, [batchId, progId, currentAy, `Year ${yearNum} (${meta.resolvedDeptCode.toUpperCase()})`, 2026 - yearNum + 1]);
 
-      // Ensure Semester exists
-      db.prepare(`
+      // Ensure Semester
+      await q(`
         INSERT INTO semesters (id, academic_year_id, program_id, semester_number, name, is_odd)
-        VALUES (?, ?, ?, ?, ?, 1)
-        ON CONFLICT (id) DO NOTHING
-      `).run(semId, currentAy, progId, semNumber, `Semester ${semNumber}`);
-
-      writeThroughPg(`
-        INSERT INTO semesters (id, academic_year_id, program_id, semester_number, name, is_odd)
-        VALUES (?, ?, ?, ?, ?, 1)
+        VALUES ($1, $2, $3, $4, $5, 1)
         ON CONFLICT (id) DO NOTHING
       `, [semId, currentAy, progId, semNumber, `Semester ${semNumber}`]);
 
-      // Ensure Section exists
+      // Ensure Section
       const secName = meta.resolvedSectionName.toUpperCase();
       let sectionId = existingSections.get(secName);
       if (!sectionId) {
         sectionId = `sec-${secName.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-        db.prepare(`
+        await q(`
           INSERT INTO sections (id, batch_id, semester_id, name, student_count)
-          VALUES (?, ?, ?, ?, 60)
-          ON CONFLICT (id) DO NOTHING
-        `).run(sectionId, batchId, semId, secName);
-
-        writeThroughPg(`
-          INSERT INTO sections (id, batch_id, semester_id, name, student_count)
-          VALUES (?, ?, ?, ?, 60)
+          VALUES ($1, $2, $3, $4, 60)
           ON CONFLICT (id) DO NOTHING
         `, [sectionId, batchId, semId, secName]);
-
         existingSections.set(secName, sectionId);
         sectionsCount++;
       }
 
-      // Upsert Subjects from subject table
+      // Upsert subjects
       for (const subj of tt.subjectTable) {
         const cCode = subj.subjectCode || `CRS-${subj.normalizedSubjectName.replace(/[^A-Z0-9]/g, '').slice(0, 8)}`;
         let courseId = existingCourses.get(cCode);
@@ -224,67 +181,36 @@ export function updateDatabaseWithTimetables(
           courseId = `crs-${cCode.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
           const cType = subj.isLab ? 'LABORATORY' : 'LECTURE';
           const rType = subj.isLab ? 'COMPUTER_LAB' : 'CLASSROOM';
-
-          db.prepare(`
+          await q(`
             INSERT INTO courses (id, code, name, department_id, program_id, semester_number, credits, course_type, required_room_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT (id) DO UPDATE SET name = excluded.name
-          `).run(courseId, cCode, subj.subjectName, deptId, progId, semNumber, subj.hoursPerWeek || 3, cType, rType);
-
-          writeThroughPg(`
-            INSERT INTO courses (id, code, name, department_id, program_id, semester_number, credits, course_type, required_room_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT (id) DO UPDATE SET name = excluded.name
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
           `, [courseId, cCode, subj.subjectName, deptId, progId, semNumber, subj.hoursPerWeek || 3, cType, rType]);
-
           existingCourses.set(cCode, courseId);
           coursesCount++;
         }
 
-        // Upsert Teachers from subject table
         for (let tIdx = 0; tIdx < subj.facultyNames.length; tIdx++) {
           const tName = subj.facultyNames[tIdx];
           const tKey = tName.toLowerCase().trim();
-          let tId = existingTeachers.get(tKey);
-          if (!tId) {
+          if (!existingTeachers.has(tKey)) {
             const cleanSlug = tName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) || `fac${Date.now()}`;
-            tId = `tch-${cleanSlug}`;
+            const tId = `tch-${cleanSlug}`;
             const empId = `EMP-${Math.floor(1000 + Math.random() * 9000)}`;
             const email = `${cleanSlug}@apollouniversity.edu.in`;
             const phone = subj.facultyPhones[tIdx] || subj.rawPhone || '';
-
-            db.prepare(`
+            await q(`
               INSERT INTO teachers (id, employee_id, name, email, phone, department_id, designation, max_hours_per_day, max_hours_per_week)
-              VALUES (?, ?, ?, ?, ?, ?, 'Assistant Professor', 5, 20)
-              ON CONFLICT (id) DO UPDATE SET phone = excluded.phone
-            `).run(tId, empId, tName, email, phone, deptId);
-
-            writeThroughPg(`
-              INSERT INTO teachers (id, employee_id, name, email, phone, department_id, designation, max_hours_per_day, max_hours_per_week)
-              VALUES (?, ?, ?, ?, ?, ?, 'Assistant Professor', 5, 20)
-              ON CONFLICT (id) DO UPDATE SET phone = excluded.phone
+              VALUES ($1, $2, $3, $4, $5, $6, 'Assistant Professor', 5, 20)
+              ON CONFLICT (id) DO UPDATE SET phone = EXCLUDED.phone
             `, [tId, empId, tName, email, phone, deptId]);
-
             existingTeachers.set(tKey, tId);
             teachersCount++;
           }
         }
       }
 
-      // 4. Insert Timetable Sessions & Activities
-      const insertEntryStmt = db.prepare(`
-        INSERT INTO timetable_entries (
-          id, timetable_id, activity_id, day_of_week, period_index, duration, room_id, is_locked, satisfaction_explanation
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
-        ON CONFLICT (id) DO UPDATE SET
-          activity_id = excluded.activity_id,
-          day_of_week = excluded.day_of_week,
-          period_index = excluded.period_index,
-          duration = excluded.duration,
-          room_id = excluded.room_id,
-          satisfaction_explanation = excluded.satisfaction_explanation
-      `);
-
+      // Sessions
       for (let sIdx = 0; sIdx < tt.sessions.length; sIdx++) {
         const session = tt.sessions[sIdx];
 
@@ -292,18 +218,11 @@ export function updateDatabaseWithTimetables(
         let courseId = existingCourses.get(session.subjectCode);
         if (!courseId) {
           courseId = `crs-${session.subjectCode.toLowerCase().replace(/[^a-z0-9]/g, '') || ('c' + sIdx)}`;
-          db.prepare(`
+          await q(`
             INSERT INTO courses (id, code, name, department_id, program_id, semester_number, credits, course_type, required_room_type)
-            VALUES (?, ?, ?, ?, ?, ?, 3, ?, ?)
-            ON CONFLICT (id) DO NOTHING
-          `).run(courseId, session.subjectCode, session.subjectName, deptId, progId, semNumber, session.activityType, session.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM');
-
-          writeThroughPg(`
-            INSERT INTO courses (id, code, name, department_id, program_id, semester_number, credits, course_type, required_room_type)
-            VALUES (?, ?, ?, ?, ?, ?, 3, ?, ?)
+            VALUES ($1, $2, $3, $4, $5, $6, 3, $7, $8)
             ON CONFLICT (id) DO NOTHING
           `, [courseId, session.subjectCode, session.subjectName, deptId, progId, semNumber, session.activityType, session.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM']);
-
           existingCourses.set(session.subjectCode, courseId);
           coursesCount++;
         }
@@ -313,19 +232,11 @@ export function updateDatabaseWithTimetables(
         if (!roomId) {
           roomId = `room-${session.roomCode.toLowerCase().replace(/[^a-z0-9]/g, '') || ('r' + sIdx)}`;
           const rType = session.activityType === 'LABORATORY' || session.roomCode.includes('LAB') ? 'COMPUTER_LAB' : 'CLASSROOM';
-
-          db.prepare(`
+          await q(`
             INSERT INTO rooms (id, building_id, name, code, floor, capacity, room_type, is_accessible, department_id)
-            VALUES (?, ?, ?, ?, 2, 70, ?, 1, ?)
-            ON CONFLICT (id) DO NOTHING
-          `).run(roomId, bldMain, `Room ${session.roomCode}`, session.roomCode, rType, deptId);
-
-          writeThroughPg(`
-            INSERT INTO rooms (id, building_id, name, code, floor, capacity, room_type, is_accessible, department_id)
-            VALUES (?, ?, ?, ?, 2, 70, ?, 1, ?)
+            VALUES ($1, $2, $3, $4, 2, 70, $5, 1, $6)
             ON CONFLICT (id) DO NOTHING
           `, [roomId, bldMain, `Room ${session.roomCode}`, session.roomCode, rType, deptId]);
-
           existingRooms.set(session.roomCode, roomId);
           roomsCount++;
         }
@@ -340,19 +251,11 @@ export function updateDatabaseWithTimetables(
             tId = `tch-${cleanSlug}`;
             const empId = `EMP-${Math.floor(1000 + Math.random() * 9000)}`;
             const email = `${cleanSlug}@apollouniversity.edu.in`;
-
-            db.prepare(`
+            await q(`
               INSERT INTO teachers (id, employee_id, name, email, department_id, designation, max_hours_per_day, max_hours_per_week)
-              VALUES (?, ?, ?, ?, ?, 'Faculty Instructor', 5, 20)
-              ON CONFLICT (id) DO NOTHING
-            `).run(tId, empId, tName, email, deptId);
-
-            writeThroughPg(`
-              INSERT INTO teachers (id, employee_id, name, email, department_id, designation, max_hours_per_day, max_hours_per_week)
-              VALUES (?, ?, ?, ?, ?, 'Faculty Instructor', 5, 20)
+              VALUES ($1, $2, $3, $4, $5, 'Faculty Instructor', 5, 20)
               ON CONFLICT (id) DO NOTHING
             `, [tId, empId, tName, email, deptId]);
-
             existingTeachers.set(tKey, tId);
             teachersCount++;
           }
@@ -365,61 +268,38 @@ export function updateDatabaseWithTimetables(
         const actId = `act-${timetableId}-${sheetSlug}-${session.dayOfWeek}-${session.periodIndex}-${sIdx}-${randomToken}`;
         const actName = `${session.subjectName} (${secName})`;
 
-        db.prepare(`
-          INSERT INTO activities (
-            id, code, name, course_id, activity_type, duration_periods, occurrences_per_week, required_room_type
-          ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-          ON CONFLICT (id) DO UPDATE SET name = excluded.name
-        `).run(actId, `ACT-${session.subjectCode}-${sheetSlug}-${sIdx}`, actName, courseId, session.activityType, session.duration, session.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM');
-
-        writeThroughPg(`
-          INSERT INTO activities (
-            id, code, name, course_id, activity_type, duration_periods, occurrences_per_week, required_room_type
-          ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-          ON CONFLICT (id) DO UPDATE SET name = excluded.name
+        await q(`
+          INSERT INTO activities (id, code, name, course_id, activity_type, duration_periods, occurrences_per_week, required_room_type)
+          VALUES ($1, $2, $3, $4, $5, $6, 1, $7)
+          ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
         `, [actId, `ACT-${session.subjectCode}-${sheetSlug}-${sIdx}`, actName, courseId, session.activityType, session.duration, session.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM']);
-
         activitiesCount++;
 
-        // Activity - Teacher assignments
+        // Teacher assignments
         for (const tId of resolvedTeacherIds) {
           const ataId = `ata-${actId}-${tId}`;
-          db.prepare('INSERT INTO activity_teacher_assignments (id, activity_id, teacher_id) VALUES (?, ?, ?) ON CONFLICT (id) DO NOTHING').run(ataId, actId, tId);
-          writeThroughPg('INSERT INTO activity_teacher_assignments (id, activity_id, teacher_id) VALUES (?, ?, ?) ON CONFLICT (id) DO NOTHING', [ataId, actId, tId]);
+          await q('INSERT INTO activity_teacher_assignments (id, activity_id, teacher_id) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING', [ataId, actId, tId]);
         }
 
-        // Activity - Student assignments
+        // Student section assignments
         const sId = existingSections.get(secName) || sectionId;
         const asaId = `asa-${actId}-${sId}`;
-        db.prepare('INSERT INTO activity_student_assignments (id, activity_id, section_id) VALUES (?, ?, ?) ON CONFLICT (id) DO NOTHING').run(asaId, actId, sId);
-        writeThroughPg('INSERT INTO activity_student_assignments (id, activity_id, section_id) VALUES (?, ?, ?) ON CONFLICT (id) DO NOTHING', [asaId, actId, sId]);
+        await q('INSERT INTO activity_student_assignments (id, activity_id, section_id) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING', [asaId, actId, sId]);
 
         // Timetable Entry
         const entryId = `ent-${timetableId}-${sheetSlug}-${session.dayOfWeek}-${session.periodIndex}-${sIdx}-${randomToken}`;
         const explanation = `Scheduled session for ${secName}: ${session.subjectName} with ${session.teacherNames.join(', ')} in ${session.roomCode}`;
 
-        insertEntryStmt.run(
-          entryId,
-          timetableId,
-          actId,
-          session.dayOfWeek,
-          session.periodIndex,
-          session.duration,
-          roomId,
-          explanation
-        );
-
-        writeThroughPg(`
-          INSERT INTO timetable_entries (
-            id, timetable_id, activity_id, day_of_week, period_index, duration, room_id, is_locked, satisfaction_explanation
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+        await q(`
+          INSERT INTO timetable_entries (id, timetable_id, activity_id, day_of_week, period_index, duration, room_id, is_locked, satisfaction_explanation)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8)
           ON CONFLICT (id) DO UPDATE SET
-            activity_id = excluded.activity_id,
-            day_of_week = excluded.day_of_week,
-            period_index = excluded.period_index,
-            duration = excluded.duration,
-            room_id = excluded.room_id,
-            satisfaction_explanation = excluded.satisfaction_explanation
+            activity_id = EXCLUDED.activity_id,
+            day_of_week = EXCLUDED.day_of_week,
+            period_index = EXCLUDED.period_index,
+            duration = EXCLUDED.duration,
+            room_id = EXCLUDED.room_id,
+            satisfaction_explanation = EXCLUDED.satisfaction_explanation
         `, [entryId, timetableId, actId, session.dayOfWeek, session.periodIndex, session.duration, roomId, explanation]);
 
         entriesCount++;
