@@ -55,7 +55,7 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
   ];
 
   const handleDownloadRoutine = () => {
-    const routineText = `METROPOLITAN INSTITUTE OF SCIENCE & TECHNOLOGY\nStudent Class Routine • Term: 2026-2027 (Odd Semester)\nStudent: ${studentName}\nProgram: B.Tech Computer Science & Engineering (Semester 3, Section A)\n\nTODAY'S SCHEDULE (Wednesday):\n09:00 - 10:00: CS301 Data Structures (Room 302)\n10:00 - 11:00: CS302 Operating Systems (Room 302)\n11:15 - 13:00: CS301L Algorithms Lab (Comp Lab 1)\n13:00 - 14:00: Lunch Break\n14:00 - 15:00: CS304 DBMS (LH 101)\n15:00 - 16:00: CS305 Computer Networks (LH 101)`;
+    const routineText = `THE APOLLO UNIVERSITY • SCHOOL OF TECHNOLOGY\nStudent Class Routine • Term: 2026-2027 (Odd Semester)\nStudent: ${studentName}\nProgram: B.Tech Computer Science & Engineering (Semester 3, Section A)\n\nTODAY'S SCHEDULE (Wednesday):\n09:00 - 10:00: CS301 Data Structures (Room 302)\n10:00 - 11:00: CS302 Operating Systems (Room 302)\n11:15 - 13:00: CS301L Algorithms Lab (Comp Lab 1)\n13:00 - 14:00: Lunch Break\n14:00 - 15:00: CS304 DBMS (LH 101)\n15:00 - 16:00: CS305 Computer Networks (LH 101)`;
     const blob = new Blob([routineText], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -69,21 +69,21 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
   return (
     <div className="space-y-6 max-w-full animate-fadeIn">
       {/* Student Hero Banner */}
-      <div className="lux-card p-6 md:p-8 bg-gradient-to-r from-[#0369A1] via-[#0284C7] to-[#075985] text-white border-sky-700 shadow-sm relative overflow-hidden">
-        <div className="absolute right-0 top-0 translate-x-10 -translate-y-10 w-80 h-80 bg-sky-300/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="lux-card p-6 md:p-8 bg-gradient-to-r from-[#002E4E] via-[#0A3B5C] to-[#2582A1] text-white border-blue-900/40 shadow-sm relative overflow-hidden">
+        <div className="absolute right-0 top-0 translate-x-10 -translate-y-10 w-80 h-80 bg-[#FDB931]/15 rounded-full blur-3xl pointer-events-none" />
         
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-sky-400/20 text-sky-200 border border-sky-400/30">
+              <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-[#FDB931]/20 text-[#FDB931] border border-[#FDB931]/40">
                 Student Routine Portal
               </span>
-              <span className="text-xs text-sky-200">B.Tech CSE • Semester 3 (Section A)</span>
+              <span className="text-xs text-teal-100">The Apollo University • School of Technology</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white">
               Hello, {studentName}
             </h1>
-            <p className="text-xs md:text-sm text-sky-100/80 max-w-2xl leading-relaxed">
+            <p className="text-xs md:text-sm text-teal-100/90 max-w-2xl leading-relaxed">
               Your daily lecture routine, classroom locations, lab batch sessions, and campus study spaces.
             </p>
           </div>
@@ -91,7 +91,7 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={handleDownloadRoutine}
-              className="px-4 py-2.5 rounded-lg text-xs font-semibold bg-white text-sky-950 hover:bg-sky-50 transition-all flex items-center gap-2 shadow-xs"
+              className="px-4 py-2.5 rounded-lg text-xs font-semibold bg-[#FDB931] text-[#002E4E] hover:bg-[#e5a624] transition-all flex items-center gap-2 shadow-xs"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Download Routine (PDF/Text)</span>
@@ -99,7 +99,7 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
 
             <button
               onClick={() => onNavigate('timetable')}
-              className="px-3.5 py-2.5 rounded-lg text-xs font-semibold bg-sky-800 hover:bg-sky-700 text-white border border-sky-600 transition-all flex items-center gap-2"
+              className="px-3.5 py-2.5 rounded-lg text-xs font-semibold bg-[#2582A1]/40 hover:bg-[#2582A1]/70 text-white border border-teal-300/30 transition-all flex items-center gap-2"
             >
               <Calendar className="w-3.5 h-3.5" />
               <span>Full Section Timetable</span>

@@ -49,15 +49,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside
-      className={`bg-white text-[#121316] flex flex-col justify-between h-[calc(100vh-6rem)] sticky top-20 rounded-xl border border-[#E8E7E3] shadow-2xs transition-all duration-250 ease-in-out ${
+      className={`bg-white text-[#002E4E] flex flex-col justify-between h-[calc(100vh-6rem)] sticky top-20 rounded-2xl border border-[#D8E6ED] shadow-2xs transition-all duration-250 ease-in-out ${
         isCollapsed ? 'w-16 min-w-[4rem]' : 'w-60 min-w-[15rem]'
       }`}
     >
       {/* Top Header with Collapse / Expand Toggle & Role Pill */}
-      <div className="p-3 border-b border-[#E8E7E3] flex items-center justify-between">
+      <div className="p-3 border-b border-[#D8E6ED] flex items-center justify-between">
         {!isCollapsed && (
           <div className="flex items-center gap-1.5 pl-1">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-[#8B8E99]">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-[#2582A1]">
               {roleConfig.shortTitle}
             </span>
           </div>
@@ -65,7 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
           title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-          className="p-1.5 rounded-lg text-[#575A65] hover:text-[#121316] hover:bg-[#F6F5F2] transition-colors mx-auto"
+          className="p-1.5 rounded-lg text-[#4A6375] hover:text-[#002E4E] hover:bg-[#F0F6F9] transition-colors mx-auto"
         >
           {isCollapsed ? (
             <PanelLeftOpen className="w-4 h-4" />
@@ -80,12 +80,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {navGroups.map(group => (
           <div key={group.title}>
             {!isCollapsed && (
-              <div className="text-[9px] font-bold uppercase tracking-widest text-[#8B8E99] px-2 mb-1.5">
+              <div className="text-[9px] font-bold uppercase tracking-widest text-[#829BA8] px-2 mb-1.5">
                 {group.title}
               </div>
             )}
             {isCollapsed && (
-              <div className="w-full h-px bg-[#E8E7E3] my-2" />
+              <div className="w-full h-px bg-[#D8E6ED] my-2" />
             )}
             <div className="space-y-0.5">
               {group.items.map(item => {
@@ -99,17 +99,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onClick={() => onSelectSection(item.id as NavSection)}
                     title={isCollapsed ? item.label : undefined}
                     className={`w-full flex items-center ${
-                      isCollapsed ? 'justify-center p-2.5' : 'justify-between px-2.5 py-1.5'
-                    } rounded-lg text-xs font-medium transition-all text-left relative group ${
+                      isCollapsed ? 'justify-center p-2.5' : 'justify-between px-2.5 py-2'
+                    } rounded-xl text-xs font-semibold transition-all text-left relative group ${
                       isActive
-                        ? 'bg-[#121316] text-white font-semibold shadow-xs'
-                        : 'text-[#575A65] hover:text-[#121316] hover:bg-[#F6F5F2]'
+                        ? 'bg-[#2582A1] text-white shadow-xs'
+                        : 'text-[#4A6375] hover:text-[#002E4E] hover:bg-[#F0F6F9]'
                     }`}
                   >
                     <div className="flex items-center gap-2.5">
                       <Icon
                         className={`w-4 h-4 flex-shrink-0 ${
-                          isActive ? 'text-white' : 'text-[#575A65] group-hover:text-[#121316]'
+                          isActive ? 'text-[#FDB931]' : 'text-[#829BA8] group-hover:text-[#2582A1]'
                         }`}
                       />
                       {!isCollapsed && <span className="truncate">{item.label}</span>}
@@ -122,7 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             className={`text-[8px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded ${
                               isActive
                                 ? 'bg-white/20 text-white'
-                                : 'bg-[#F4F4F1] text-[#575A65] border border-[#E8E7E3]'
+                                : 'bg-[#FFF7E6] text-[#B27B08] border border-[#FFE4A8]'
                             }`}
                           >
                             {item.badge}
@@ -149,25 +149,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Role Profile Indicator at Bottom */}
-      <div className="p-2.5 border-t border-[#E8E7E3] bg-[#FBFBFA]">
+      <div className="p-2.5 border-t border-[#D8E6ED] bg-[#F4F8FA]">
         <div
           onClick={() => onSelectSection('role-profile')}
           className={`flex items-center cursor-pointer ${
             isCollapsed ? 'justify-center p-2' : 'justify-between p-2'
-          } rounded-lg bg-white border border-[#E8E7E3] hover:border-[#D1D0C9] transition-colors`}
+          } rounded-xl bg-white border border-[#D8E6ED] hover:border-[#2582A1] transition-colors`}
         >
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${roleConfig.avatarBg}`}></div>
+            <div className="w-2.5 h-2.5 rounded-full bg-[#FDB931]"></div>
             {!isCollapsed && (
               <div>
-                <div className="text-[11px] font-semibold text-[#121316] truncate max-w-[120px]">
+                <div className="text-[11px] font-bold text-[#002E4E] truncate max-w-[120px]">
                   {roleConfig.title}
                 </div>
-                <div className="text-[9px] text-[#8B8E99]">Role Workspace</div>
+                <div className="text-[9px] text-[#2582A1] font-medium">The Apollo University</div>
               </div>
             )}
           </div>
-          {!isCollapsed && <Activity className="w-3.5 h-3.5 text-[#575A65]" />}
+          {!isCollapsed && <Activity className="w-3.5 h-3.5 text-[#2582A1]" />}
         </div>
       </div>
     </aside>

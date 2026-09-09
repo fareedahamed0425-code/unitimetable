@@ -48,21 +48,21 @@ export const DepartmentAdminProfileView: React.FC<DepartmentAdminProfileViewProp
   return (
     <div className="space-y-6 max-w-full animate-fadeIn">
       {/* HOD Banner */}
-      <div className="lux-card p-6 md:p-8 bg-gradient-to-r from-[#064E3B] via-[#065F46] to-[#047857] text-white border-emerald-700 shadow-sm relative overflow-hidden">
-        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-80 h-80 bg-emerald-300/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="lux-card p-6 md:p-8 bg-gradient-to-r from-[#002E4E] via-[#0A3B5C] to-[#2582A1] text-white border-[#0A3B5C] shadow-sm relative overflow-hidden">
+        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-80 h-80 bg-[#FDB931]/10 rounded-full blur-3xl pointer-events-none" />
         
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-emerald-400/20 text-emerald-200 border border-emerald-400/30">
-                Department Cockpit
+              <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-[#FDB931]/20 text-[#FDB931] border border-[#FDB931]/30">
+                The Apollo University • School of Technology
               </span>
-              <span className="text-xs text-emerald-200">Dept. Computer Science & Engineering</span>
+              <span className="text-xs text-teal-200">Dept. Computer Science & Engineering</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white">
               HOD Management Console
             </h1>
-            <p className="text-xs md:text-sm text-emerald-100/80 max-w-2xl leading-relaxed">
+            <p className="text-xs md:text-sm text-teal-100/90 max-w-2xl leading-relaxed">
               Curriculum delivery tracking, faculty teaching workload allocation, lab batch splits, and departmental schedule verification for CSE.
             </p>
           </div>
@@ -70,15 +70,15 @@ export const DepartmentAdminProfileView: React.FC<DepartmentAdminProfileViewProp
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={() => onNavigate('timetable')}
-              className="px-4 py-2.5 rounded-lg text-xs font-semibold bg-white text-emerald-950 hover:bg-emerald-50 transition-all flex items-center gap-2 shadow-xs"
+              className="px-4 py-2.5 rounded-lg text-xs font-bold bg-[#FDB931] hover:bg-[#EAA319] text-[#002E4E] transition-all flex items-center gap-2 shadow-xs"
             >
-              <Calendar className="w-3.5 h-3.5" />
+              <Calendar className="w-3.5 h-3.5 text-[#002E4E]" />
               <span>CSE Timetable Grid</span>
             </button>
 
             <button
               onClick={onOpenWizard}
-              className="px-3.5 py-2.5 rounded-lg text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white border border-emerald-600 transition-all flex items-center gap-2"
+              className="px-3.5 py-2.5 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all flex items-center gap-2"
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>Re-Optimize Dept</span>

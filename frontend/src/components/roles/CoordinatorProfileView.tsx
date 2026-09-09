@@ -39,21 +39,21 @@ export const CoordinatorProfileView: React.FC<CoordinatorProfileViewProps> = ({
   return (
     <div className="space-y-6 max-w-full animate-fadeIn">
       {/* Coordinator Architect Banner */}
-      <div className="lux-card p-6 md:p-8 bg-gradient-to-r from-[#78350F] via-[#92400E] to-[#B45309] text-white border-amber-700 shadow-sm relative overflow-hidden">
-        <div className="absolute right-0 top-0 translate-x-10 -translate-y-10 w-80 h-80 bg-amber-300/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="lux-card p-6 md:p-8 bg-gradient-to-r from-[#002E4E] via-[#0A3B5C] to-[#2582A1] text-white border-[#0A3B5C] shadow-sm relative overflow-hidden">
+        <div className="absolute right-0 top-0 translate-x-10 -translate-y-10 w-80 h-80 bg-[#FDB931]/10 rounded-full blur-3xl pointer-events-none" />
         
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-amber-400/20 text-amber-200 border border-amber-400/30">
-                Scheduling Architect Hub
+              <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-[#FDB931]/20 text-[#FDB931] border border-[#FDB931]/30">
+                The Apollo University • Scheduling Architect Hub
               </span>
-              <span className="text-xs text-amber-200">Constraint Satisfaction & Optimizer</span>
+              <span className="text-xs text-teal-200">Constraint Satisfaction & Optimizer</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white">
               Timetable Coordinator Command Desk
             </h1>
-            <p className="text-xs md:text-sm text-amber-100/80 max-w-2xl leading-relaxed">
+            <p className="text-xs md:text-sm text-teal-100/90 max-w-2xl leading-relaxed">
               Fine-tune simulated annealing cooling parameters, resolve conflict collisions, configure smart preference weights, and synchronize with FET XML.
             </p>
           </div>
@@ -61,15 +61,15 @@ export const CoordinatorProfileView: React.FC<CoordinatorProfileViewProps> = ({
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={onOpenWizard}
-              className="px-4 py-2.5 rounded-lg text-xs font-semibold bg-white text-amber-950 hover:bg-amber-50 transition-all flex items-center gap-2 shadow-xs"
+              className="px-4 py-2.5 rounded-lg text-xs font-bold bg-[#FDB931] hover:bg-[#EAA319] text-[#002E4E] transition-all flex items-center gap-2 shadow-xs"
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+              <Sparkles className="w-3.5 h-3.5 text-[#002E4E]" />
               <span>Launch Smart Wizard</span>
             </button>
 
             <button
               onClick={() => onNavigate('conflicts')}
-              className="px-3.5 py-2.5 rounded-lg text-xs font-semibold bg-amber-900/80 hover:bg-amber-900 text-white border border-amber-600 transition-all flex items-center gap-2"
+              className="px-3.5 py-2.5 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all flex items-center gap-2"
             >
               <AlertTriangle className="w-3.5 h-3.5" />
               <span>Conflicts ({conflictsCount})</span>

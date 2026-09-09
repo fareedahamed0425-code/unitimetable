@@ -1,8 +1,15 @@
 @import "tailwindcss";
 
 /* ===================================================
-   ALABASTER PRECISION — QUIET LUXURY DESIGN SYSTEM
-   Swiss International Precision + Understated Editorial
+   THE APOLLO UNIVERSITY DESIGN SYSTEM
+   Brand Palette:
+   • Primary Ocean Teal: #2582A1
+   • Warm Sun Gold / Amber: #FDB931
+   • Deep Institutional Navy: #002E4E
+   • Sky Accent: #00AEEF
+   • Crisp Canvas: #F4F8FA
+   • Surface Card: #FFFFFF
+   • Border Subtle: #D8E6ED
    =================================================== */
 
 @layer base {
@@ -10,15 +17,25 @@
     --font-sans: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-mono: "JetBrains Mono", SFMono-Regular, Menlo, Monaco, monospace;
     
-    /* Quiet Luxury Palette */
-    --lux-canvas: #F9F9F8;
+    /* Apollo Brand Palette */
+    --apollo-teal: #2582A1;
+    --apollo-teal-dark: #1C6982;
+    --apollo-teal-light: #E8F4F8;
+    --apollo-gold: #FDB931;
+    --apollo-gold-dark: #EAA319;
+    --apollo-gold-light: #FFF7E6;
+    --apollo-navy: #002E4E;
+    --apollo-navy-dark: #001E33;
+    
+    /* Surface and Text tokens */
+    --lux-canvas: #F4F8FA;
     --lux-surface: #FFFFFF;
-    --lux-surface-subtle: #F4F4F1;
-    --lux-ink-primary: #121316;
-    --lux-ink-secondary: #575A65;
-    --lux-ink-muted: #8B8E99;
-    --lux-border: #E8E7E3;
-    --lux-border-strong: #121316;
+    --lux-surface-subtle: #EBF3F7;
+    --lux-ink-primary: #002E4E;
+    --lux-ink-secondary: #4A6375;
+    --lux-ink-muted: #829BA8;
+    --lux-border: #D8E6ED;
+    --lux-border-strong: #2582A1;
   }
 
   html,
@@ -31,7 +48,7 @@
     color: var(--lux-ink-primary);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    letter-spacing: -0.015em;
+    letter-spacing: -0.012em;
   }
 }
 
@@ -40,284 +57,201 @@
    =================================================== */
 
 .lux-card,
-.apple-card,
-.glass-card {
+.apollo-card {
   background: #FFFFFF;
-  border: 1px solid #E8E7E3;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 6px 16px -4px rgba(0, 0, 0, 0.02);
+  border: 1px solid #D8E6ED;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0, 46, 78, 0.03), 0 6px 16px -4px rgba(0, 46, 78, 0.04);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .lux-card:hover,
-.apple-card-hover:hover,
-.glass-card-hover:hover {
-  border-color: #D3D1CB;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 12px 28px -6px rgba(0, 0, 0, 0.04);
+.apollo-card:hover {
+  border-color: #B5D2DF;
+  box-shadow: 0 2px 8px rgba(0, 46, 78, 0.06), 0 12px 28px -6px rgba(0, 46, 78, 0.08);
 }
 
-.lux-card-subtle,
-.apple-glass-subtle,
-.glass-card-subtle {
-  background: #F8F8F6;
-  border: 1px solid #ECEBE7;
+.lux-card-subtle {
+  background: #F0F6F9;
+  border: 1px solid #DFECF2;
   border-radius: 10px;
 }
 
-.lux-modal,
-.apple-modal,
-.glass-modal {
+.lux-modal {
   background: #FFFFFF;
-  border: 1px solid #DCDAD4;
-  border-radius: 14px;
-  box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.02);
+  border: 1px solid #C8DDE7;
+  border-radius: 16px;
+  box-shadow: 0 30px 60px -15px rgba(0, 46, 78, 0.18), 0 0 0 1px rgba(0, 46, 78, 0.04);
 }
 
 /* ===================================================
-   PRECISION BUTTONS & CONTROLS
+   BUTTONS & ACTIONS
    =================================================== */
 
-.lux-btn,
-.apple-btn,
-.neu-btn {
+.lux-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
   padding: 7px 14px;
   border-radius: 8px;
-  font-weight: 500;
+  font-weight: 600;
   font-size: 0.8125rem;
-  color: #121316;
+  color: #002E4E;
   background: #FFFFFF;
-  border: 1px solid #E2E0D9;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  border: 1px solid #D8E6ED;
+  box-shadow: 0 1px 2px rgba(0, 46, 78, 0.04);
   cursor: pointer;
   transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
 }
 
-.lux-btn:hover,
-.apple-btn:hover,
-.neu-btn:hover {
-  background: #F6F5F2;
-  border-color: #C8C6BE;
-  color: #121316;
+.lux-btn:hover {
+  background: #F0F6F9;
+  border-color: #B8D4E1;
+  color: #2582A1;
 }
 
-.lux-btn:active,
-.apple-btn:active,
-.neu-btn:active {
+.lux-btn:active {
   transform: scale(0.99);
-  background: #ECEBE7;
+  background: #E4EFF4;
 }
 
-/* Primary Obsidian Button */
-.lux-btn-primary,
-.apple-btn-primary,
-.neu-btn-primary {
-  background: #121316 !important;
+/* Primary Apollo Teal Button */
+.lux-btn-primary {
+  background: #2582A1 !important;
   color: #FFFFFF !important;
-  border: 1px solid #121316 !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+  border: 1px solid #2582A1 !important;
+  box-shadow: 0 2px 4px rgba(37, 130, 161, 0.25) !important;
   font-weight: 600 !important;
 }
 
-.lux-btn-primary:hover,
-.apple-btn-primary:hover,
-.neu-btn-primary:hover {
-  background: #282A30 !important;
-  border-color: #282A30 !important;
+.lux-btn-primary:hover {
+  background: #1C6982 !important;
+  border-color: #1C6982 !important;
 }
 
-/* Success Button */
-.lux-btn-success,
-.apple-btn-success,
-.neu-btn-success {
-  background: #1B1E24 !important;
+/* Apollo Golden Sun Button */
+.lux-btn-gold {
+  background: #FDB931 !important;
+  color: #002E4E !important;
+  border: 1px solid #FDB931 !important;
+  box-shadow: 0 2px 4px rgba(253, 185, 49, 0.3) !important;
+  font-weight: 700 !important;
+}
+
+.lux-btn-gold:hover {
+  background: #EAA319 !important;
+  border-color: #EAA319 !important;
+}
+
+/* Apollo Navy Button */
+.lux-btn-navy {
+  background: #002E4E !important;
   color: #FFFFFF !important;
-  border: 1px solid #1B1E24 !important;
+  border: 1px solid #002E4E !important;
 }
 
-.lux-btn-success:hover,
-.apple-btn-success:hover,
-.neu-btn-success:hover {
-  background: #2D313A !important;
+.lux-btn-navy:hover {
+  background: #001E33 !important;
 }
 
 /* Danger Button */
-.lux-btn-danger,
-.apple-btn-danger,
-.neu-btn-danger {
+.lux-btn-danger {
   background: #FFFFFF !important;
   color: #B91C1C !important;
   border: 1px solid #FCA5A5 !important;
 }
 
-.lux-btn-danger:hover,
-.apple-btn-danger:hover,
-.neu-btn-danger:hover {
+.lux-btn-danger:hover {
   background: #FEF2F2 !important;
 }
 
 /* ===================================================
-   MINIMALIST INPUTS & FORMS
+   INPUTS & FORMS
    =================================================== */
 
-.lux-input,
-.apple-input,
-.app-input {
+.lux-input {
   width: 100%;
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid #E2E0D9;
+  border: 1px solid #D8E6ED;
   background: #FFFFFF;
-  color: #121316;
+  color: #002E4E;
   font-size: 0.8125rem;
   transition: all 0.16s ease;
 }
 
-.lux-input:focus,
-.apple-input:focus,
-.app-input:focus {
+.lux-input:focus {
   outline: none;
-  border-color: #121316;
-  box-shadow: 0 0 0 2px rgba(18, 19, 22, 0.08);
+  border-color: #2582A1;
+  box-shadow: 0 0 0 3px rgba(37, 130, 161, 0.12);
 }
 
-.lux-select,
-.apple-select,
-.app-select {
+.lux-select {
   padding: 6px 12px;
   border-radius: 8px;
-  border: 1px solid #E2E0D9;
+  border: 1px solid #D8E6ED;
   background: #FFFFFF;
-  color: #121316;
+  color: #002E4E;
   font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.16s ease;
 }
 
-.lux-select:focus,
-.apple-select:focus,
-.app-select:focus {
+.lux-select:focus {
   outline: none;
-  border-color: #121316;
-  box-shadow: 0 0 0 2px rgba(18, 19, 22, 0.08);
+  border-color: #2582A1;
+  box-shadow: 0 0 0 3px rgba(37, 130, 161, 0.12);
 }
 
 /* ===================================================
-   RESTRAINED EDITORIAL BADGES (No Loud Toy Colors)
+   THEMATIC BADGES & STATUS TAGS
    =================================================== */
 
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2.5px 7px;
-  border-radius: 6px;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  transition: all 0.15s ease;
+.badge-apollo-teal {
+  background: #E8F4F8;
+  color: #2582A1;
+  border: 1px solid #C4E2EC;
 }
 
-.badge-primary {
-  background: #F1F0EC;
-  color: #121316;
-  border: 1px solid #DDDCD6;
+.badge-apollo-gold {
+  background: #FFF7E6;
+  color: #B27B08;
+  border: 1px solid #FFE4A8;
 }
 
-.badge-success {
-  background: #F0F4F1;
-  color: #1E3A24;
-  border: 1px solid #D1DFD4;
+.badge-apollo-navy {
+  background: #E6EFF4;
+  color: #002E4E;
+  border: 1px solid #CCDDE7;
 }
 
-.badge-warning {
-  background: #FAF6ED;
-  color: #4D3800;
-  border: 1px solid #EFE4C8;
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.badge-danger {
-  background: #FDF2F2;
-  color: #7F1D1D;
-  border: 1px solid #F8D0D0;
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
 }
 
-.badge-slate {
-  background: #F5F5F3;
-  color: #55575F;
-  border: 1px solid #E4E3DF;
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
 }
 
-/* ===================================================
-   DATA GRID TIMETABLE TILES
-   =================================================== */
-
-.activity-card {
-  position: relative;
-  background: #FFFFFF;
-  border: 1px solid #E6E4DF;
-  border-radius: 8px;
-  padding: 8px 10px;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.015);
-  cursor: grab;
+.animate-fadeIn {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.activity-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.05);
-  border-color: #121316;
+.animate-scaleUp {
+  animation: scaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.activity-card.is-locked {
-  border-left: 3px solid #121316;
-  background: #FAFAFA;
-}
-
-.activity-card.is-conflict {
-  border-left: 3px solid #B91C1C;
-  background: #FEF8F8;
-}
-
-.activity-card.type-lecture {
-  border-left: 3px solid #121316;
-}
-
-.activity-card.type-lab {
-  border-left: 3px solid #4A5568;
-}
-
-.activity-card.type-tutorial {
-  border-left: 3px solid #718096;
-}
-
-.activity-card.type-seminar {
-  border-left: 3px solid #2D3748;
-}
-
-/* ===================================================
-   SMOOTH REFINED SCROLLBAR
-   =================================================== */
-
-::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #D5D3CC;
-  border-radius: 9999px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #B5B2A8;
+.animate-slideInRight {
+  animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

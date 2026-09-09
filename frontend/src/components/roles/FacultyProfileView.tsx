@@ -47,7 +47,7 @@ export const FacultyProfileView: React.FC<FacultyProfileViewProps> = ({
   ];
 
   const handleExportIcs = () => {
-    const icsContent = `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Metropolitan Institute//Faculty Schedule//EN\nBEGIN:VEVENT\nSUMMARY:CS301 Data Structures\nLOCATION:Room 302, CS Block\nDESCRIPTION:Metropolitan Institute of Science & Technology\nDTSTART:20260909T090000Z\nDTEND:20260909T100000Z\nEND:VEVENT\nBEGIN:VEVENT\nSUMMARY:CS305 Advanced Algorithms\nLOCATION:Lecture Hall 101\nDTSTART:20260909T110000Z\nDTEND:20260909T120000Z\nEND:VEVENT\nEND:VCALENDAR`;
+    const icsContent = `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//The Apollo University//Faculty Schedule//EN\nBEGIN:VEVENT\nSUMMARY:CS301 Data Structures\nLOCATION:Room 302, CS Block\nDESCRIPTION:The Apollo University\nDTSTART:20260909T090000Z\nDTEND:20260909T100000Z\nEND:VEVENT\nBEGIN:VEVENT\nSUMMARY:CS305 Advanced Algorithms\nLOCATION:Lecture Hall 101\nDTSTART:20260909T110000Z\nDTEND:20260909T120000Z\nEND:VEVENT\nEND:VCALENDAR`;
     const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -61,21 +61,21 @@ export const FacultyProfileView: React.FC<FacultyProfileViewProps> = ({
   return (
     <div className="space-y-6 max-w-full animate-fadeIn">
       {/* Faculty Profile Hero */}
-      <div className="lux-card p-6 md:p-8 bg-gradient-to-r from-[#115E59] via-[#0F766E] to-[#134E4A] text-white border-teal-700 shadow-sm relative overflow-hidden">
-        <div className="absolute right-0 top-0 translate-x-10 -translate-y-10 w-80 h-80 bg-teal-300/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="lux-card p-6 md:p-8 bg-gradient-to-r from-[#002E4E] via-[#0A3B5C] to-[#2582A1] text-white border-blue-900/40 shadow-sm relative overflow-hidden">
+        <div className="absolute right-0 top-0 translate-x-10 -translate-y-10 w-80 h-80 bg-[#FDB931]/15 rounded-full blur-3xl pointer-events-none" />
         
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-teal-400/20 text-teal-200 border border-teal-400/30">
+              <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-[#FDB931]/20 text-[#FDB931] border border-[#FDB931]/40">
                 Academic Faculty Portal
               </span>
-              <span className="text-xs text-teal-200">Dept. of Computer Science & Engineering</span>
+              <span className="text-xs text-teal-100">The Apollo University • School of Technology</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white">
               Welcome back, {teacherName}
             </h1>
-            <p className="text-xs md:text-sm text-teal-100/80 max-w-2xl leading-relaxed">
+            <p className="text-xs md:text-sm text-teal-100/90 max-w-2xl leading-relaxed">
               Your personalized teaching routine, room guides, assigned student cohorts, and preference adjustment desk.
             </p>
           </div>
@@ -83,7 +83,7 @@ export const FacultyProfileView: React.FC<FacultyProfileViewProps> = ({
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={handleExportIcs}
-              className="px-4 py-2.5 rounded-lg text-xs font-semibold bg-white text-teal-950 hover:bg-teal-50 transition-all flex items-center gap-2 shadow-xs"
+              className="px-4 py-2.5 rounded-lg text-xs font-semibold bg-[#FDB931] text-[#002E4E] hover:bg-[#e5a624] transition-all flex items-center gap-2 shadow-xs"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export to Calendar (.ics)</span>
@@ -91,7 +91,7 @@ export const FacultyProfileView: React.FC<FacultyProfileViewProps> = ({
 
             <button
               onClick={() => onNavigate('timetable')}
-              className="px-3.5 py-2.5 rounded-lg text-xs font-semibold bg-teal-800 hover:bg-teal-700 text-white border border-teal-600 transition-all flex items-center gap-2"
+              className="px-3.5 py-2.5 rounded-lg text-xs font-semibold bg-[#2582A1]/40 hover:bg-[#2582A1]/70 text-white border border-teal-300/30 transition-all flex items-center gap-2"
             >
               <Calendar className="w-3.5 h-3.5" />
               <span>My Weekly Grid</span>

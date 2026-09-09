@@ -54,22 +54,22 @@ export const SuperAdminProfileView: React.FC<SuperAdminProfileViewProps> = ({
   return (
     <div className="space-y-6 max-w-full animate-fadeIn">
       {/* Super Admin High-Level Banner */}
-      <div className="lux-card p-6 md:p-8 bg-gradient-to-r from-[#1E1B4B] via-[#1E1B4B] to-[#312E81] text-white border-purple-900 shadow-sm relative overflow-hidden">
-        <div className="absolute right-0 top-0 translate-x-10 -translate-y-10 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="lux-card p-6 md:p-8 bg-gradient-to-r from-[#002E4E] via-[#0A3B5C] to-[#2582A1] text-white border-[#0A3B5C] shadow-sm relative overflow-hidden">
+        <div className="absolute right-0 top-0 translate-x-10 -translate-y-10 w-96 h-96 bg-[#FDB931]/10 rounded-full blur-3xl pointer-events-none" />
         
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-purple-400/20 text-purple-200 border border-purple-400/30">
-                System Governance Root
+              <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-[#FDB931]/20 text-[#FDB931] border border-[#FDB931]/30">
+                The Apollo University • Root Governance
               </span>
-              <span className="text-xs text-purple-300">ID: {currentUser?.id || 'admin-root'}</span>
+              <span className="text-xs text-teal-200">ID: {currentUser?.id || 'admin-root'}</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white">
               Super Admin Control Console
             </h1>
-            <p className="text-xs md:text-sm text-purple-200/80 max-w-2xl leading-relaxed">
-              Global platform governance, multi-campus scheduling orchestration, database snapshot integrity, and infrastructure safety locks.
+            <p className="text-xs md:text-sm text-teal-100/90 max-w-2xl leading-relaxed">
+              Global platform governance, multi-campus scheduling orchestration, database snapshot integrity, and Apollo infrastructure safety locks.
             </p>
           </div>
 
@@ -79,7 +79,7 @@ export const SuperAdminProfileView: React.FC<SuperAdminProfileViewProps> = ({
               onClick={() => setIsLocked(!isLocked)}
               className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 border transition-all ${
                 isLocked
-                  ? 'bg-amber-500 text-white border-amber-400'
+                  ? 'bg-[#FDB931] text-[#002E4E] border-[#FDB931]'
                   : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
               }`}
             >
@@ -89,7 +89,7 @@ export const SuperAdminProfileView: React.FC<SuperAdminProfileViewProps> = ({
 
             <button
               onClick={handleCreateBackup}
-              className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-white text-purple-950 hover:bg-purple-50 transition-all flex items-center gap-2 shadow-xs"
+              className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-white text-[#002E4E] hover:bg-[#F0F6F9] transition-all flex items-center gap-2 shadow-xs"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Snapshot DB</span>
@@ -97,9 +97,9 @@ export const SuperAdminProfileView: React.FC<SuperAdminProfileViewProps> = ({
 
             <button
               onClick={onOpenWizard}
-              className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white transition-all flex items-center gap-2 shadow-xs"
+              className="px-3.5 py-2 rounded-lg text-xs font-bold bg-[#FDB931] hover:bg-[#EAA319] text-[#002E4E] transition-all flex items-center gap-2 shadow-xs"
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              <Sparkles className="w-3.5 h-3.5 text-[#002E4E]" />
               <span>AI Solver</span>
             </button>
           </div>
