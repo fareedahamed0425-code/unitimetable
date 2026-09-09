@@ -21,7 +21,11 @@
     --lux-border-strong: #121316;
   }
 
+  html,
   body {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
     font-family: var(--font-sans);
     background-color: var(--lux-canvas);
     color: var(--lux-ink-primary);

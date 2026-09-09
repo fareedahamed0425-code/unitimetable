@@ -94,8 +94,8 @@ export const App: React.FC = () => {
   const conflictsCount = activeTimetable?.conflicts?.length || 0;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
-      {/* Dynamic Role-Aware Navbar */}
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col w-full overflow-x-hidden">
+      {/* Dynamic Streamlined Navbar */}
       <Navbar
         currentUser={currentUser}
         allUsers={users}
@@ -114,8 +114,8 @@ export const App: React.FC = () => {
         onNavigate={(s) => setCurrentSection(s as NavSection)}
       />
 
-      {/* Main Container */}
-      <div className="flex-1 max-w-[1700px] w-full mx-auto px-6 pb-8 flex gap-6">
+      {/* Main Container with min-w-0 to prevent horizontal scroll */}
+      <div className="flex-1 w-full max-w-[1700px] mx-auto px-4 md:px-6 pb-8 flex gap-5 overflow-x-hidden">
         {/* Left Dynamic Role Sidebar */}
         <Sidebar
           currentSection={currentSection}
@@ -128,8 +128,8 @@ export const App: React.FC = () => {
           currentUser={currentUser}
         />
 
-        {/* Center Content Workspace */}
-        <main className="flex-1 overflow-y-auto">
+        {/* Center Content Workspace with min-w-0 to constrain wide tables/grids */}
+        <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
           {currentSection === 'role-profile' && (
             <RoleProfileRouter
               currentUser={currentUser}
@@ -140,7 +140,7 @@ export const App: React.FC = () => {
                 setIsWizardOpen(true);
                 setCurrentSection('wizard');
               }}
-              onNavigate={setCurrentSection}
+              onNavigate={(s) => setCurrentSection(s as NavSection)}
               onOpenPublishing={() => setCurrentSection('publishing')}
             />
           )}
@@ -153,7 +153,7 @@ export const App: React.FC = () => {
                 setIsWizardOpen(true);
                 setCurrentSection('wizard');
               }}
-              onNavigate={setCurrentSection}
+              onNavigate={(s) => setCurrentSection(s as NavSection)}
             />
           )}
 
