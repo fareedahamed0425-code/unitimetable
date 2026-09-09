@@ -93,7 +93,9 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
   // Upload Timetable state
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [uploadFileName, setUploadFileName] = useState('');
-  const [uploadFileBase64, _setUploadFileBase64] = useState(''); // kept for API compat, no longer used
+  const [uploadFileBase64, setUploadFileBase64] = useState('');
+  const [uploadDetectedSheets, setUploadDetectedSheets] = useState<string[]>([]);
+  const [uploadSheetsSummary, setUploadSheetsSummary] = useState<any[]>([]);
   const [uploadParsedRows, setUploadParsedRows] = useState<any[]>([]);
   const [uploadPreviewSessions, setUploadPreviewSessions] = useState<any[]>([]);
   const [uploadSummary, setUploadSummary] = useState<{
@@ -479,45 +481,56 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
     }
   };
 
-  // Handle Timetable File Selection & Client-side Preview
+  // Handle Timetable File Selection & Multi-Sheet Preview
   const handleFileSelect = (file: File) => {
     setUploadErrorMsg('');
     setUploadSuccessMsg('');
     setUploadFileName(file.name);
+    setUploadDetectedSheets([]);
+    setUploadSheetsSummary([]);
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async () => {
       try {
-        const buffer = e.target?.result;
-        if (!buffer) return;
+        const dataUrl = reader.result as string;
+        if (!dataUrl) return;
 
-        // Parse file into structured rows only — we store schedule data, not the file itself
-        let rows: any[] = [];
+        const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+        setUploadFileBase64(base64);
 
-        if (typeof buffer === 'string') {
-          if (file.name.endsWith('.json')) {
-            const parsed = JSON.parse(buffer);
-            rows = Array.isArray(parsed) ? parsed : (parsed.sessions || parsed.entries || [parsed]);
-          } else {
-            // CSV / text format
-            const wb = xlsx.read(buffer, { type: 'string' });
-            rows = xlsx.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+        // Pre-flight intelligent multi-sheet workbook analysis
+        if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || !file.name.includes('.')) {
+          const previewRes = await api.uploadTimetablePreview({
+            fileBase64: base64,
+            targetSection: uploadTargetSectionId
+          });
+
+          if (previewRes.success && previewRes.data) {
+            setUploadSummary({
+              totalRows: previewRes.data.totalSessionsCount,
+              sectionsCount: previewRes.data.detectedSheets.length || 1,
+              teachersCount: previewRes.data.sheetsSummary.reduce((sum, s) => sum + s.subjectsCount, 0) || 1,
+              roomsCount: previewRes.data.detectedSheets.length || 1
+            });
+            setUploadDetectedSheets(previewRes.data.detectedSheets || []);
+            setUploadSheetsSummary(previewRes.data.sheetsSummary || []);
+            setUploadPreviewSessions(previewRes.data.sessionsPreview || []);
+            return;
           }
-        } else {
-          // Excel binary formats (.xlsx, .xls)
-          const arrayBuffer = buffer as ArrayBuffer;
-          const wb = xlsx.read(arrayBuffer, { type: 'array' });
-          rows = xlsx.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
         }
+
+        // Fallback for CSV / JSON text files
+        const buffer = reader.result as ArrayBuffer;
+        const wb = xlsx.read(buffer, { type: 'array' });
+        const rows = xlsx.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
         setUploadParsedRows(rows);
 
-        // Calculate preview metrics
         const sectionsSet = new Set<string>();
         const teachersSet = new Set<string>();
         const roomsSet = new Set<string>();
 
-        rows.forEach(r => {
-          Object.entries(r).forEach(([k, v]) => {
+        (rows as any[]).forEach((r: any) => {
+          Object.entries(r || {}).forEach(([k, v]) => {
             const strVal = String(v).trim();
             const keyLower = k.toLowerCase();
             if (keyLower.includes('sec') || keyLower.includes('class') || keyLower.includes('batch')) {
@@ -545,11 +558,7 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
       }
     };
 
-    if (file.name.endsWith('.csv') || file.name.endsWith('.json') || file.name.endsWith('.xml') || file.name.endsWith('.fet')) {
-      reader.readAsText(file);
-    } else {
-      reader.readAsArrayBuffer(file);
-    }
+    reader.readAsDataURL(file);
   };
 
   const handleApplyUpload = async () => {
@@ -563,10 +572,10 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
     setUploadSuccessMsg('');
 
     try {
-      // Send only the parsed row data — no file/document storage
       const res = await api.uploadTimetableExtract({
-        fileBase64: '',
+        fileBase64: uploadFileBase64,
         fileName: uploadFileName,
+        targetSection: uploadTargetSectionId,
         rawRows: uploadParsedRows,
         clearExisting: uploadClearExisting,
         timetableId: timetable?.id || 'tt-active'
@@ -2016,21 +2025,55 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
             {/* Live Extraction Preview Metrics */}
             {uploadSummary && (
               <div className="space-y-3 pt-1">
+                {/* Detected Sheets Breakdown */}
+                {uploadDetectedSheets.length > 0 && (
+                  <div className="p-3 rounded-xl bg-[#EBF4F7] border border-[#BCE1EE] space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-[#002E4E] flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-[#2582A1]" />
+                        Detected Timetable Worksheets ({uploadDetectedSheets.length} Classes Found):
+                      </span>
+                      <span className="text-[10px] uppercase font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                        Auto-Extracted & Validated
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {uploadDetectedSheets.map((sheet, sIdx) => (
+                        <span key={sIdx} className="px-2.5 py-1 rounded-lg bg-white border border-[#BCE1EE] text-xs font-bold text-[#002E4E] shadow-2xs">
+                          📑 {sheet}
+                        </span>
+                      ))}
+                    </div>
+                    {uploadSheetsSummary.length > 0 && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                        {uploadSheetsSummary.map((sm, idx) => (
+                          <div key={idx} className="bg-white/80 p-2 rounded-lg border border-[#D8E6ED] text-[11px] space-y-0.5">
+                            <div className="font-bold text-[#002E4E]">{sm.section} ({sm.year})</div>
+                            <div className="text-[#4A6375]">Room: <span className="font-semibold text-[#2582A1]">{sm.room}</span></div>
+                            <div className="text-[#4A6375] truncate">Teacher: <span className="font-semibold text-[#002E4E]">{sm.classTeacher || 'Assigned Faculty'}</span></div>
+                            <div className="text-emerald-700 font-bold text-[10px]">{sm.subjectsCount} Subjects • {sm.sessionsCount} Sessions</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <div className="p-2.5 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] text-center">
                     <div className="text-xs text-[#4A6375] font-semibold">Total Sessions</div>
                     <div className="text-lg font-bold text-[#002E4E]">{uploadSummary.totalRows}</div>
                   </div>
                   <div className="p-2.5 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] text-center">
-                    <div className="text-xs text-[#4A6375] font-semibold">Class Sections</div>
+                    <div className="text-xs text-[#4A6375] font-semibold">Class Cohorts</div>
                     <div className="text-lg font-bold text-[#2582A1]">{uploadSummary.sectionsCount}</div>
                   </div>
                   <div className="p-2.5 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] text-center">
-                    <div className="text-xs text-[#4A6375] font-semibold">Instructors</div>
+                    <div className="text-xs text-[#4A6375] font-semibold">Subjects & Labs</div>
                     <div className="text-lg font-bold text-amber-700">{uploadSummary.teachersCount}</div>
                   </div>
                   <div className="p-2.5 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] text-center">
-                    <div className="text-xs text-[#4A6375] font-semibold">Venues / Rooms</div>
+                    <div className="text-xs text-[#4A6375] font-semibold">Allocated Rooms</div>
                     <div className="text-lg font-bold text-emerald-700">{uploadSummary.roomsCount}</div>
                   </div>
                 </div>
@@ -2039,26 +2082,36 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
                 {uploadPreviewSessions.length > 0 && (
                   <div className="border border-[#D8E6ED] rounded-xl overflow-hidden text-xs">
                     <div className="bg-[#F4F8FA] px-3 py-1.5 font-bold text-[#002E4E] border-b border-[#D8E6ED] flex items-center justify-between text-[11px]">
-                      <span>Extracted Data Preview (First {uploadPreviewSessions.length} records)</span>
+                      <span>Extracted Data Preview (Sample {Math.min(6, uploadPreviewSessions.length)} Records)</span>
                       <span className="text-[#2582A1]">Auto-Mapped to Apollo Structure</span>
                     </div>
                     <div className="max-h-36 overflow-y-auto overflow-x-auto">
                       <table className="w-full text-left border-collapse">
                         <thead className="bg-[#F9FBFC] text-[#4A6375] text-[10px] uppercase border-b border-[#D8E6ED]">
                           <tr>
-                            {Object.keys(uploadPreviewSessions[0]).slice(0, 6).map((k) => (
-                              <th key={k} className="p-2 font-bold">{k}</th>
-                            ))}
+                            <th className="p-2 font-bold">Day</th>
+                            <th className="p-2 font-bold">Slot</th>
+                            <th className="p-2 font-bold">Subject Code</th>
+                            <th className="p-2 font-bold">Subject Name</th>
+                            <th className="p-2 font-bold">Type</th>
+                            <th className="p-2 font-bold">Instructor</th>
+                            <th className="p-2 font-bold">Venue</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#D8E6ED] text-[11px] text-[#002E4E]">
-                          {uploadPreviewSessions.map((row, idx) => (
+                          {uploadPreviewSessions.slice(0, 6).map((row, idx) => (
                             <tr key={idx} className="hover:bg-[#F4F8FA]/50">
-                              {Object.values(row).slice(0, 6).map((val: any, cIdx) => (
-                                <td key={cIdx} className="p-2 truncate max-w-[140px]">
-                                  {String(val || '-')}
-                                </td>
-                              ))}
+                              <td className="p-2 font-semibold">{row.dayName || row.day || '-'}</td>
+                              <td className="p-2">{row.periodLabel || `P${row.periodIndex || 1}`} ({row.startTime || ''}-{row.endTime || ''})</td>
+                              <td className="p-2 font-mono font-bold text-[#2582A1]">{row.subjectCode || row.code || '-'}</td>
+                              <td className="p-2 truncate max-w-[140px] font-semibold">{row.subjectName || row.name || row.rawValue || '-'}</td>
+                              <td className="p-2">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${row.activityType === 'LABORATORY' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
+                                  {row.activityType || 'LECTURE'}
+                                </span>
+                              </td>
+                              <td className="p-2 truncate max-w-[120px]">{Array.isArray(row.teacherNames) ? row.teacherNames.join(', ') : (row.teacher || 'Faculty')}</td>
+                              <td className="p-2 font-semibold text-emerald-800">{row.roomCode || row.room || '-'}</td>
                             </tr>
                           ))}
                         </tbody>

@@ -402,6 +402,7 @@ export const api = {
     fileBase64?: string;
     fileName?: string;
     rawRows?: any[];
+    targetSection?: string;
     clearExisting?: boolean;
     timetableId?: string;
   }): Promise<{
@@ -411,11 +412,56 @@ export const api = {
       insertedEntriesCount: number;
       conflictsCount: number;
       qualityScore: QualityScore;
+      validationReport?: any;
+      detectedSheets?: string[];
+      sheetsSummary?: Array<{
+        sheetName: string;
+        section: string;
+        year: string;
+        dept: string;
+        room: string;
+        classTeacher: string;
+        subjectsCount: number;
+        sessionsCount: number;
+      }>;
       sessionsPreview: any[];
     };
     error?: string;
   }> {
     const res = await fetch(url('timetables/upload-extract'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    return res.json();
+  },
+
+  // Timetable Upload Pre-Flight Preview
+  async uploadTimetablePreview(params: {
+    fileBase64: string;
+    targetSection?: string;
+  }): Promise<{
+    success: boolean;
+    data?: {
+      validationReport: any;
+      detectedSheets: string[];
+      timetablesCount: number;
+      totalSessionsCount: number;
+      sheetsSummary: Array<{
+        sheetName: string;
+        section: string;
+        year: string;
+        dept: string;
+        room: string;
+        classTeacher: string;
+        subjectsCount: number;
+        sessionsCount: number;
+      }>;
+      sessionsPreview: any[];
+    };
+    error?: string;
+  }> {
+    const res = await fetch(url('timetables/upload-preview'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)
