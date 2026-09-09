@@ -1,0 +1,8 @@
+{
+  "name": "shared",
+  "version": "1.0.0",
+  "description": "Shared TypeScript types and interfaces",
+  "main": "types.js",
+  "types": "types.ts",
+  "private": true
+}

@@ -1,0 +1,20 @@
+# ==============================================================================
+# Render Blueprint Configuration (render.yaml)
+# https://render.com/docs/blueprint-spec
+# ==============================================================================
+services:
+  # Backend Docker Web Service
+  - type: web
+    name: timetable-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_PATH
+        value: /app/backend/timetable.db

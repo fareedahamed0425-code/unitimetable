@@ -1,30 +1,40 @@
 # ==============================================================================
-# University Timetable Management Platform - Backend Dockerfile
+# University Timetable Management Platform - Production Root Dockerfile
 # ==============================================================================
 FROM node:20-alpine AS base
 
-# Install native dependencies required for compiling better-sqlite3
+# Install build tools for native C++ SQLite bindings (better-sqlite3) and curl for health check
 RUN apk add --no-cache python3 make g++ curl
 
 WORKDIR /app
 
-# Copy root workspace configurations and package files
+# Copy root workspace and package manifests first to leverage Docker layer caching
 COPY package.json package-lock.json* ./
 COPY backend/package.json ./backend/
+COPY shared/package.json* ./shared/
+COPY frontend/package.json* ./frontend/
 
-# Install dependencies for the backend and workspace
+# Install backend dependencies
 RUN npm ci --workspace=backend || npm install --workspace=backend
 
-# Copy backend source code and shared models/types
-COPY backend/ ./backend/
-COPY shared/ ./shared/
+# Rebuild native better-sqlite3 for Alpine Linux
+WORKDIR /app/backend
+RUN npm rebuild better-sqlite3
 
-# Expose backend API port
+# Copy backend source code and shared domain models
+WORKDIR /app
+COPY shared/ ./shared/
+COPY backend/ ./backend/
+
+# Ensure SQLite data directory exists
+RUN mkdir -p /app/backend/data
+
+# Environment configuration
 ENV PORT=5000
 ENV NODE_ENV=production
 EXPOSE 5000
 
-# Health check to ensure API router is responsive
+# Health check endpoint
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:${PORT}/health || exit 1
 

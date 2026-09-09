@@ -8,8 +8,13 @@ const backendRoot = isCompiled
   ? path.resolve(__dirname, '../../../../') 
   : path.resolve(__dirname, '../../');
 
-let DB_PATH = path.resolve(backendRoot, 'timetable.db');
-const SCHEMA_PATH = path.resolve(backendRoot, 'src/db/schema.sql');
+let DB_PATH = process.env.DATABASE_PATH 
+  ? path.resolve(process.env.DATABASE_PATH)
+  : path.resolve(backendRoot, 'timetable.db');
+
+const SCHEMA_PATH = fs.existsSync(path.resolve(backendRoot, 'src/db/schema.sql'))
+  ? path.resolve(backendRoot, 'src/db/schema.sql')
+  : path.resolve(__dirname, 'schema.sql');
 
 if (process.env.VERCEL) {
   DB_PATH = '/tmp/timetable.db';
@@ -18,6 +23,12 @@ if (process.env.VERCEL) {
   if (!fs.existsSync(DB_PATH) && fs.existsSync(repoDbPath)) {
     fs.copyFileSync(repoDbPath, DB_PATH);
   }
+}
+
+// Ensure parent directory exists for DB_PATH (e.g. for /app/backend/data)
+const dbDir = path.dirname(DB_PATH);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
 }
 
 export const db: Database.Database = new Database(DB_PATH, {
