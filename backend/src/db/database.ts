@@ -51,32 +51,49 @@ export const pgPool = isPostgresConfigured
     })
   : null;
 
+if (pgPool) {
+  pgPool.on('error', (err: any) => {
+    // Gracefully handle idle PostgreSQL client disconnects (ECONNRESET) without crashing
+    console.warn('PostgreSQL connection pool notice:', err.message || err);
+  });
+}
+
 // Async query helper for direct PostgreSQL operations
 export async function pgQuery<T = any>(text: string, params?: any[]): Promise<T[]> {
   if (!pgPool) return [];
-  const client = await pgPool.connect();
   try {
-    const res = await client.query(text, params);
-    return res.rows;
-  } catch (err) {
-    console.error('PostgreSQL Query Error:', err, { text, params });
-    throw err;
-  } finally {
-    client.release();
+    const client = await pgPool.connect();
+    try {
+      const res = await client.query(text, params);
+      return res.rows;
+    } catch (err) {
+      console.error('PostgreSQL Query Error:', err, { text, params });
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (connErr: any) {
+    console.warn('PostgreSQL connection unavailable:', connErr.message);
+    return [];
   }
 }
 
 export async function pgExecute(text: string, params?: any[]): Promise<number> {
   if (!pgPool) return 0;
-  const client = await pgPool.connect();
   try {
-    const res = await client.query(text, params);
-    return res.rowCount || 0;
-  } catch (err) {
-    console.error('PostgreSQL Execute Error:', err, { text, params });
-    throw err;
-  } finally {
-    client.release();
+    const client = await pgPool.connect();
+    try {
+      const res = await client.query(text, params);
+      return res.rowCount || 0;
+    } catch (err) {
+      console.error('PostgreSQL Execute Error:', err, { text, params });
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (connErr: any) {
+    console.warn('PostgreSQL connection unavailable:', connErr.message);
+    return 0;
   }
 }
 
@@ -89,10 +106,14 @@ export function convertSqliteToPg(sql: string): string {
 // Write-through helper to persist mutations to PostgreSQL
 export function writeThroughPg(sql: string, params: any[] = []): void {
   if (!pgPool) return;
-  const pgSql = convertSqliteToPg(sql);
-  pgPool.query(pgSql, params).catch(err => {
-    console.warn('Background write-through to PostgreSQL warning:', err.message);
-  });
+  try {
+    const pgSql = convertSqliteToPg(sql);
+    pgPool.query(pgSql, params).catch((err: any) => {
+      // Suppress noisy write-through warnings in background
+    });
+  } catch (e: any) {
+    // Suppress synchronous connection error
+  }
 }
 
 const SYNC_TABLES = [

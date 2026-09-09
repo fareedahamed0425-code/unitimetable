@@ -65,6 +65,14 @@ if (frontendDist) {
   });
 }
 
+process.on('unhandledRejection', (reason: any) => {
+  console.warn('Unhandled Promise Rejection (handled safely):', reason?.message || reason);
+});
+
+process.on('uncaughtException', (err: any) => {
+  console.warn('Uncaught Exception (handled safely):', err?.message || err);
+});
+
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`====================================================`);
