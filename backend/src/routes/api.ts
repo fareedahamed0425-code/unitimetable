@@ -344,11 +344,23 @@ apiRouter.get('/users', async (req: Request, res: Response) => {
   try {
     let rawUsers: any[] = [];
     try {
-      rawUsers = await pgQuery<any>('SELECT id, name, email, role, department_id, teacher_id, student_id, created_at FROM users ORDER BY name ASC');
+      rawUsers = await pgQuery<any>(`
+        SELECT u.id, u.name, u.email, u.role, u.department_id, u.teacher_id, u.student_id, u.created_at,
+               d.name as department_name, d.code as department_code
+        FROM users u
+        LEFT JOIN departments d ON u.department_id = d.id
+        ORDER BY u.name ASC
+      `);
     } catch (e) {}
 
     if (!rawUsers || rawUsers.length === 0) {
-      rawUsers = db.prepare('SELECT id, name, email, role, department_id, teacher_id, student_id, created_at FROM users ORDER BY name ASC').all() as any[];
+      rawUsers = db.prepare(`
+        SELECT u.id, u.name, u.email, u.role, u.department_id, u.teacher_id, u.student_id, u.created_at,
+               d.name as department_name, d.code as department_code
+        FROM users u
+        LEFT JOIN departments d ON u.department_id = d.id
+        ORDER BY u.name ASC
+      `).all() as any[];
     }
 
     const users: User[] = rawUsers.map(u => ({
@@ -357,12 +369,121 @@ apiRouter.get('/users', async (req: Request, res: Response) => {
       email: u.email,
       role: u.role,
       departmentId: u.department_id || undefined,
+      departmentName: u.department_name || undefined,
+      departmentCode: u.department_code || undefined,
       teacherId: u.teacher_id || undefined,
       studentId: u.student_id || undefined,
       createdAt: u.created_at || new Date().toISOString()
     }));
 
     return res.json({ success: true, data: users });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Admin updates user role
+apiRouter.put('/users/:id/role', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { role } = req.body;
+  if (!role) {
+    return res.status(400).json({ success: false, error: 'Role is required' });
+  }
+  const cleanRole = role.toUpperCase();
+  try {
+    const updateSql = 'UPDATE users SET role = ? WHERE id = ?';
+    db.prepare(updateSql).run(cleanRole, id);
+    writeThroughPg(updateSql, [cleanRole, id]);
+
+    // Audit log
+    const logId = `log-${Date.now()}`;
+    const logSql = 'INSERT INTO audit_logs (id, user_id, user_name, action, entity_type, entity_id, after_value) VALUES (?, ?, ?, ?, ?, ?, ?)';
+    try {
+      db.prepare(logSql).run(logId, 'admin', 'Super Administrator', 'UPDATE_ROLE', 'USER', id, `Role updated to ${cleanRole}`);
+      writeThroughPg(logSql, [logId, 'admin', 'Super Administrator', 'UPDATE_ROLE', 'USER', id, `Role updated to ${cleanRole}`]);
+    } catch {}
+
+    return res.json({ success: true, message: `User role successfully updated to ${cleanRole}` });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Admin updates user profile details
+apiRouter.put('/users/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { name, email, role, departmentId, teacherId } = req.body;
+  try {
+    const cleanRole = role ? role.toUpperCase() : undefined;
+    const cleanEmail = email ? email.trim().toLowerCase() : undefined;
+    const cleanName = name ? name.trim() : undefined;
+
+    const updateSql = 'UPDATE users SET name = COALESCE(?, name), email = COALESCE(?, email), role = COALESCE(?, role), department_id = ?, teacher_id = ? WHERE id = ?';
+    const params = [cleanName || null, cleanEmail || null, cleanRole || null, departmentId || null, teacherId || null, id];
+    db.prepare(updateSql).run(...params);
+    writeThroughPg(updateSql, params);
+
+    return res.json({ success: true, message: 'User updated successfully' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Admin creates new user directly with role
+apiRouter.post('/users', async (req: Request, res: Response) => {
+  const { name, email, password, role = 'FACULTY', departmentId, teacherId } = req.body;
+  if (!name || !email || !password) {
+    return res.status(400).json({ success: false, error: 'Name, email, and password are required' });
+  }
+  const cleanEmail = email.trim().toLowerCase();
+  const userId = `user-${Date.now()}`;
+  const pHash = hashPassword(password);
+  const cleanRole = role.toUpperCase();
+
+  try {
+    const insertSql = 'INSERT INTO users (id, name, email, password_hash, role, department_id, teacher_id) VALUES (?, ?, ?, ?, ?, ?, ?)';
+    const params = [userId, name.trim(), cleanEmail, pHash, cleanRole, departmentId || null, teacherId || null];
+    db.prepare(insertSql).run(...params);
+    writeThroughPg(insertSql, params);
+
+    return res.status(201).json({
+      success: true,
+      data: { id: userId, name: name.trim(), email: cleanEmail, role: cleanRole, departmentId },
+      message: `User created successfully with role ${cleanRole}`
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Admin deletes user
+apiRouter.delete('/users/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const deleteSql = 'DELETE FROM users WHERE id = ?';
+    db.prepare(deleteSql).run(id);
+    writeThroughPg(deleteSql, [id]);
+
+    return res.json({ success: true, message: 'User deleted successfully' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Admin resets user password
+apiRouter.post('/users/:id/reset-password', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { newPassword } = req.body;
+  if (!newPassword || newPassword.length < 6) {
+    return res.status(400).json({ success: false, error: 'New password must be at least 6 characters' });
+  }
+  try {
+    const pHash = hashPassword(newPassword);
+    const updateSql = 'UPDATE users SET password_hash = ? WHERE id = ?';
+    db.prepare(updateSql).run(pHash, id);
+    writeThroughPg(updateSql, [pHash, id]);
+
+    return res.json({ success: true, message: 'Password reset successfully' });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
   }

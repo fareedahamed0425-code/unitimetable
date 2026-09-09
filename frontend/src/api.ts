@@ -117,6 +117,61 @@ export const api = {
     }
   },
 
+  async updateUserRole(userId: string, role: string): Promise<any> {
+    const res = await fetch(url(`users/${userId}/role`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role })
+    });
+    const json = await res.json();
+    return json;
+  },
+
+  async updateUser(userId: string, data: Partial<User>): Promise<any> {
+    const res = await fetch(url(`users/${userId}`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const json = await res.json();
+    return json;
+  },
+
+  async createUser(data: {
+    name: string;
+    email: string;
+    password: string;
+    role: string;
+    departmentId?: string;
+    teacherId?: string;
+  }): Promise<any> {
+    const res = await fetch(url('users'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const json = await res.json();
+    return json;
+  },
+
+  async deleteUser(userId: string): Promise<any> {
+    const res = await fetch(url(`users/${userId}`), {
+      method: 'DELETE'
+    });
+    const json = await res.json();
+    return json;
+  },
+
+  async resetUserPassword(userId: string, newPassword: string): Promise<any> {
+    const res = await fetch(url(`users/${userId}/reset-password`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newPassword })
+    });
+    const json = await res.json();
+    return json;
+  },
+
   // Academic Hierarchy
   async getHierarchy(): Promise<any> {
     const res = await fetch(url('hierarchy'));

@@ -26,7 +26,8 @@ export type NavSection =
   | 'availability'
   | 'fet'
   | 'publishing'
-  | 'audit';
+  | 'audit'
+  | 'users';
 
 interface SidebarProps {
   currentSection: NavSection;

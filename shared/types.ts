@@ -16,6 +16,8 @@ export interface User {
   email: string;
   role: RoleType;
   departmentId?: string;
+  departmentName?: string;
+  departmentCode?: string;
   facultyId?: string;
   teacherId?: string;
   studentId?: string;

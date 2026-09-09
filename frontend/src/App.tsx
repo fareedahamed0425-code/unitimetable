@@ -19,6 +19,7 @@ import { ResourceManagementView } from './components/resources/ResourceManagemen
 import { FETInteroperabilityView } from './components/fet/FETInteroperabilityView';
 import { PublishingAndAuditView } from './components/governance/PublishingAndAuditView';
 import { RoleProfileRouter } from './components/roles/RoleProfileRouter';
+import { UserManagementView } from './components/roles/UserManagementView';
 import { AuthPage } from './components/auth/AuthPage';
 import { NotFoundPage } from './components/common/NotFoundPage';
 import { api } from './api';
@@ -86,7 +87,8 @@ export const SECTION_TO_SLUG: Record<NavSection, string> = {
   calendar: 'calendar',
   fet: 'fet',
   publishing: 'publishing',
-  audit: 'audit'
+  audit: 'audit',
+  users: 'users'
 };
 
 export const SLUG_TO_SECTION: Record<string, NavSection> = {
@@ -117,7 +119,11 @@ export const SLUG_TO_SECTION: Record<string, NavSection> = {
   publishing: 'publishing',
   versions: 'publishing',
   audit: 'audit',
-  logs: 'audit'
+  logs: 'audit',
+  users: 'users',
+  accounts: 'users',
+  roles: 'users',
+  access: 'users'
 };
 
 export const App: React.FC = () => {
@@ -422,6 +428,13 @@ export const App: React.FC = () => {
           {(currentSection === 'publishing' || currentSection === 'audit') && (
             <PublishingAndAuditView
               activeTimetable={activeTimetable}
+              onRefresh={handleRefreshData}
+            />
+          )}
+
+          {currentSection === 'users' && (
+            <UserManagementView
+              currentUser={currentUser}
               onRefresh={handleRefreshData}
             />
           )}

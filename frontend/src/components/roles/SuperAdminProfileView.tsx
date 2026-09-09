@@ -258,73 +258,44 @@ export const SuperAdminProfileView: React.FC<SuperAdminProfileViewProps> = ({
       )}
 
       {activeTab === 'users' && (
-        <div className="lux-card p-6 bg-white border-[#E8E7E3] space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="lux-card p-6 bg-white border-[#D8E6ED] space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h3 className="text-sm font-bold text-[#121316]">User Accounts & Role Permissions</h3>
-              <p className="text-xs text-[#8B8E99]">Centralized permission matrix for Metropolitan Institute administrators</p>
+              <h3 className="text-sm font-bold text-[#002E4E] uppercase tracking-wider">
+                User Access & Role Management Directory
+              </h3>
+              <p className="text-xs text-[#4A6375] mt-0.5">
+                Manage registered user accounts, edit privileges, promote/demote administrators, and reset credentials.
+              </p>
             </div>
-            <span className="text-xs font-semibold px-2.5 py-1 rounded bg-[#F4F4F1] text-[#121316] border border-[#E8E7E3]">
-              6 Active Personas
-            </span>
+            <button
+              onClick={() => onNavigate('users')}
+              className="lux-btn lux-btn-gold px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs"
+            >
+              <Users className="w-4 h-4" />
+              <span>Open User Management Console</span>
+            </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-[#F9F9F8] border-b border-[#E8E7E3] text-[#8B8E99] uppercase text-[10px] font-bold">
-                <tr>
-                  <th className="p-3">User & Email</th>
-                  <th className="p-3">Role Tier</th>
-                  <th className="p-3">Scope</th>
-                  <th className="p-3">Permission Level</th>
-                  <th className="p-3">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E8E7E3]">
-                <tr>
-                  <td className="p-3 font-semibold text-[#121316]">Super Admin (admin@mist.edu)</td>
-                  <td className="p-3"><span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-bold text-[10px]">SUPER_ADMIN</span></td>
-                  <td className="p-3 text-[#575A65]">Global Institution</td>
-                  <td className="p-3 text-[#121316]">Full System Root</td>
-                  <td className="p-3"><span className="text-emerald-600 font-bold">Active</span></td>
-                </tr>
-                <tr>
-                  <td className="p-3 font-semibold text-[#121316]">Dean Academic Affairs (dean@mist.edu)</td>
-                  <td className="p-3"><span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-bold text-[10px]">UNIVERSITY_ADMIN</span></td>
-                  <td className="p-3 text-[#575A65]">Academic Directorate</td>
-                  <td className="p-3 text-[#121316]">Publish, Policy, Approve</td>
-                  <td className="p-3"><span className="text-emerald-600 font-bold">Active</span></td>
-                </tr>
-                <tr>
-                  <td className="p-3 font-semibold text-[#121316]">Dr. Alan Turing (hod.cse@mist.edu)</td>
-                  <td className="p-3"><span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">DEPARTMENT_ADMIN</span></td>
-                  <td className="p-3 text-[#575A65]">Dept. Computer Science</td>
-                  <td className="p-3 text-[#121316]">Faculty, Labs, Sign-off</td>
-                  <td className="p-3"><span className="text-emerald-600 font-bold">Active</span></td>
-                </tr>
-                <tr>
-                  <td className="p-3 font-semibold text-[#121316]">Prof. Ada Lovelace (coordinator@mist.edu)</td>
-                  <td className="p-3"><span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-bold text-[10px]">TIMETABLE_COORDINATOR</span></td>
-                  <td className="p-3 text-[#575A65]">Central Scheduling</td>
-                  <td className="p-3 text-[#121316]">CSP Engine, Solver, FET</td>
-                  <td className="p-3"><span className="text-emerald-600 font-bold">Active</span></td>
-                </tr>
-                <tr>
-                  <td className="p-3 font-semibold text-[#121316]">Dr. Grace Hopper (grace@mist.edu)</td>
-                  <td className="p-3"><span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-bold text-[10px]">FACULTY</span></td>
-                  <td className="p-3 text-[#575A65]">CSE Faculty</td>
-                  <td className="p-3 text-[#121316]">My Schedule, Leave, Slots</td>
-                  <td className="p-3"><span className="text-emerald-600 font-bold">Active</span></td>
-                </tr>
-                <tr>
-                  <td className="p-3 font-semibold text-[#121316]">Alex Johnson (alex.j@student.mist.edu)</td>
-                  <td className="p-3"><span className="px-2 py-0.5 rounded bg-sky-100 text-sky-800 font-bold text-[10px]">STUDENT</span></td>
-                  <td className="p-3 text-[#575A65]">CSE Batch 2026 (Sec A)</td>
-                  <td className="p-3 text-[#121316]">View Class Routine, iCal</td>
-                  <td className="p-3"><span className="text-emerald-600 font-bold">Active</span></td>
-                </tr>
-              </tbody>
-            </table>
+          <div className="p-4 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#002E4E] text-white flex items-center justify-center font-bold">
+                <Key className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-[#002E4E]">Full Administrative Authority Active</div>
+                <div className="text-[11px] text-[#4A6375]">
+                  Super Administrators can directly modify user roles (Admin & Faculty), onboard new staff, and manage institutional access.
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => onNavigate('users')}
+              className="text-xs font-bold text-[#2582A1] hover:underline flex items-center gap-1"
+            >
+              <span>Manage All Users</span>
+              <span>→</span>
+            </button>
           </div>
         </div>
       )}

@@ -84,9 +84,10 @@ export const ROLE_CONFIGS: Record<RoleType, RoleConfig> = {
     defaultSection: 'role-profile',
     navGroups: [
       {
-        title: 'GOVERNANCE & SYSTEM',
+        title: 'GOVERNANCE & ACCESS',
         items: [
           { id: 'role-profile', label: 'Platform Console', icon: ShieldAlert, badge: 'ROOT' },
+          { id: 'users', label: 'User & Role Access', icon: UserCheck, badge: 'AUTH' },
           { id: 'dashboard', label: 'Academic Overview', icon: LayoutDashboard },
           { id: 'wizard', label: 'Smart Wizard', icon: Sparkles, badge: 'AI' },
           { id: 'timetable', label: 'Global Timetable Grid', icon: CalendarDays },
@@ -100,7 +101,10 @@ export const ROLE_CONFIGS: Record<RoleType, RoleConfig> = {
           { id: 'faculty', label: 'Faculty Directory', icon: Users },
           { id: 'students', label: 'Student Cohorts', icon: GraduationCap },
           { id: 'courses', label: 'Courses & Syllabi', icon: BookOpen },
-          { id: 'infrastructure', label: 'Campus Venues & Labs', icon: Building }
+          { id: 'activities', label: 'Course Activities & Labs', icon: Layers },
+          { id: 'infrastructure', label: 'Campus Venues & Labs', icon: Building },
+          { id: 'calendar', label: 'Periods & Calendar', icon: Clock },
+          { id: 'availability', label: 'Faculty Workload Matrix', icon: CalendarCheck }
         ]
       },
       {
