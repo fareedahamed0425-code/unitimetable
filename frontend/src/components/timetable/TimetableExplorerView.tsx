@@ -111,6 +111,13 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
   const [isResettingDb, setIsResettingDb] = useState(false);
   const [uploadTargetSectionId, setUploadTargetSectionId] = useState<string>('ALL');
 
+  // Clean Data & System Reset State
+  const [isCleanDataModalOpen, setIsCleanDataModalOpen] = useState(false);
+  const [cleanScope, setCleanScope] = useState<'TIMETABLE_ENTRIES_ONLY' | 'ALL_TIMETABLES_AND_SESSIONS' | 'CLEAR_CURRICULUM_AND_ACTIVITIES' | 'FULL_FACTORY_RESET'>('TIMETABLE_ENTRIES_ONLY');
+  const [isCleaningData, setIsCleaningData] = useState(false);
+  const [cleanConfirmAccepted, setCleanConfirmAccepted] = useState(false);
+  const [cleanStatusMessage, setCleanStatusMessage] = useState<{ success: boolean; text: string } | null>(null);
+
   // Year Selection & Cohort Hierarchy
   const [selectedYear, setSelectedYear] = useState<number | 'ALL'>('ALL');
   const [hierarchyYears, setHierarchyYears] = useState<any[]>([]);
@@ -714,6 +721,32 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
     }
   };
 
+  const handleExecuteCleanData = async () => {
+    setIsCleaningData(true);
+    setCleanStatusMessage(null);
+    try {
+      const res = await api.cleanData(cleanScope, timetable?.id || 'tt-active');
+      if (res.success) {
+        setCleanStatusMessage({ success: true, text: res.message || 'Data cleaned successfully!' });
+        setTimeout(async () => {
+          setIsCleanDataModalOpen(false);
+          setCleanConfirmAccepted(false);
+          setCleanStatusMessage(null);
+          await loadHierarchySections();
+          await loadActivitiesAndCourses();
+          await loadTimetablesList();
+          onRefresh();
+        }, 1200);
+      } else {
+        setCleanStatusMessage({ success: false, text: res.error || 'Failed to clean data.' });
+      }
+    } catch (err: any) {
+      setCleanStatusMessage({ success: false, text: err.message || 'Error occurred while cleaning data.' });
+    } finally {
+      setIsCleaningData(false);
+    }
+  };
+
   // Faculty Email Dispatch Handler
   const handleDispatchEmails = async () => {
     setIsDispatching(true);
@@ -1095,6 +1128,20 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
           >
             <FolderOpen className="w-3.5 h-3.5 text-[#2582A1]" />
             <span>Timetables ({allTimetables.length})</span>
+          </button>
+
+          {/* Clean Data Action */}
+          <button
+            onClick={() => {
+              setCleanStatusMessage(null);
+              setCleanConfirmAccepted(false);
+              setIsCleanDataModalOpen(true);
+            }}
+            className="lux-btn text-xs py-1.5 px-3 bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 flex items-center gap-1.5 rounded-lg font-bold transition-all hover:scale-[1.02]"
+            title="Clean Timetable Data & System Reset Options"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+            <span>Clean Data</span>
           </button>
 
           {/* Export Suite */}
@@ -2772,6 +2819,153 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
                   )}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5.D DATA CLEANUP & SYSTEM RESET MODAL */}
+      {isCleanDataModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-rose-200 shadow-2xl max-w-xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto animate-scaleUp">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-[#D8E6ED] pb-3.5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-300 flex items-center justify-center text-rose-700">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#002E4E]">System Data Cleanup & Reset</h3>
+                  <p className="text-xs text-[#4A6375]">
+                    Purge timetable entries, clear curriculum allocations, or perform a full factory reset.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsCleanDataModalOpen(false)}
+                className="p-1.5 rounded-lg text-[#4A6375] hover:text-[#002E4E] hover:bg-[#F4F8FA]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Scope Options */}
+            <div className="space-y-2.5">
+              <label className="text-xs font-bold text-[#002E4E] uppercase tracking-wider block">
+                Select Cleanup Scope:
+              </label>
+
+              {[
+                {
+                  id: 'TIMETABLE_ENTRIES_ONLY',
+                  title: '🧹 Clear Active Timetable Grid Only',
+                  desc: 'Removes all scheduled classes and conflicts for the currently active timetable. Master faculties, courses, rooms, and sections remain completely untouched.',
+                  badge: 'Recommended for Re-scheduling',
+                  badgeColor: 'bg-sky-50 text-sky-700 border-sky-200'
+                },
+                {
+                  id: 'ALL_TIMETABLES_AND_SESSIONS',
+                  title: '🗑️ Clear All Timetable Schedules',
+                  desc: 'Purges all scheduled classes across all 4 academic years, semesters, and saved draft timetable versions.',
+                  badge: 'Multi-Semester Wipe',
+                  badgeColor: 'bg-amber-50 text-amber-700 border-amber-200'
+                },
+                {
+                  id: 'CLEAR_CURRICULUM_AND_ACTIVITIES',
+                  title: '📦 Clear Timetables & Curriculum Subjects',
+                  desc: 'Clears all scheduled sessions, course entries, subject assignments, and uploaded Excel data so you can import a fresh Excel file cleanly.',
+                  badge: 'Pre-Import Clean',
+                  badgeColor: 'bg-purple-50 text-purple-700 border-purple-200'
+                },
+                {
+                  id: 'FULL_FACTORY_RESET',
+                  title: '⚡ Complete Factory Clean Reset (Total Wipe)',
+                  desc: 'Wipes all uploaded data and resets the entire database to the clean 4-department baseline (CSE, AI&DS, AI&ML, Cyber Security) with official time slots and Super Admin credentials.',
+                  badge: 'Factory Default',
+                  badgeColor: 'bg-rose-50 text-rose-700 border-rose-200'
+                }
+              ].map(opt => (
+                <div
+                  key={opt.id}
+                  onClick={() => setCleanScope(opt.id as any)}
+                  className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                    cleanScope === opt.id
+                      ? 'bg-rose-50/50 border-rose-400 ring-2 ring-rose-300/40 shadow-xs'
+                      : 'bg-white border-[#D8E6ED] hover:border-slate-300 hover:bg-slate-50/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-bold text-xs text-[#002E4E]">{opt.title}</div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${opt.badgeColor}`}>
+                      {opt.badge}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#4A6375] mt-1 leading-relaxed">{opt.desc}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Safety Confirmation Checkbox */}
+            <div className="p-3 rounded-xl bg-amber-50/80 border border-amber-200 space-y-2">
+              <label className="flex items-start gap-2 text-xs text-amber-900 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={cleanConfirmAccepted}
+                  onChange={e => setCleanConfirmAccepted(e.target.checked)}
+                  className="mt-0.5 rounded border-amber-300 text-rose-600 focus:ring-rose-500"
+                />
+                <span className="leading-snug">
+                  <strong>I understand this action is permanent:</strong> The selected data will be wiped from both local storage and the database.
+                </span>
+              </label>
+            </div>
+
+            {/* Status Feedback */}
+            {cleanStatusMessage && (
+              <div
+                className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                  cleanStatusMessage.success
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border-rose-200 text-rose-800'
+                }`}
+              >
+                {cleanStatusMessage.success ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                )}
+                <span>{cleanStatusMessage.text}</span>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex items-center justify-between pt-3 border-t border-[#D8E6ED]">
+              <button
+                type="button"
+                onClick={() => setIsCleanDataModalOpen(false)}
+                className="lux-btn text-xs py-2 px-4 bg-white border border-[#D8E6ED] hover:bg-[#F4F8FA] text-[#4A6375] rounded-xl font-semibold"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExecuteCleanData}
+                disabled={isCleaningData || !cleanConfirmAccepted}
+                className="lux-btn text-xs py-2 px-5 bg-rose-700 hover:bg-rose-800 text-white rounded-xl font-bold flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                {isCleaningData ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Executing Clean...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Execute Cleanup Now</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

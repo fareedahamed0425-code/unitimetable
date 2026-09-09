@@ -2188,6 +2188,93 @@ apiRouter.post('/timetables/upload-extract', async (req: Request, res: Response)
 // ----------------------------------------------------
 // 13. ADMIN DATABASE RESET TO CLEAN 4-DEPT STATE
 // ----------------------------------------------------
+// 13. DATA CLEANUP & RESET
+// ----------------------------------------------------
+apiRouter.post('/admin/clean-data', async (req: Request, res: Response) => {
+  try {
+    const { mode = 'FULL_FACTORY_RESET', timetableId = 'tt-active' } = req.body;
+
+    if (mode === 'TIMETABLE_ENTRIES_ONLY') {
+      // Clear timetable entries and conflicts for active timetable
+      db.prepare('DELETE FROM timetable_entries WHERE timetable_id = ?').run(timetableId);
+      db.prepare('DELETE FROM conflicts WHERE timetable_id = ?').run(timetableId);
+      db.prepare('UPDATE timetables SET quality_score_json = NULL, total_conflicts = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(timetableId);
+
+      writeThroughPg('DELETE FROM timetable_entries WHERE timetable_id = $1', [timetableId]);
+      writeThroughPg('DELETE FROM conflicts WHERE timetable_id = $1', [timetableId]);
+
+      return res.json({
+        success: true,
+        message: 'Active timetable grid cleared successfully. All scheduled sessions have been removed.'
+      });
+    }
+
+    if (mode === 'ALL_TIMETABLES_AND_SESSIONS') {
+      // Clear all timetable entries across all timetables
+      db.prepare('DELETE FROM timetable_entries').run();
+      db.prepare('DELETE FROM conflicts').run();
+      db.prepare('DELETE FROM generation_jobs').run();
+      db.prepare('DELETE FROM timetable_versions').run();
+      db.prepare('UPDATE timetables SET quality_score_json = NULL, total_conflicts = 0, updated_at = CURRENT_TIMESTAMP').run();
+
+      writeThroughPg('DELETE FROM timetable_entries', []);
+      writeThroughPg('DELETE FROM conflicts', []);
+
+      return res.json({
+        success: true,
+        message: 'All timetable entries across all semesters and batches have been cleared.'
+      });
+    }
+
+    if (mode === 'CLEAR_CURRICULUM_AND_ACTIVITIES') {
+      // Clear timetable entries + activities + course assignments + uploaded sheets
+      runInTransaction(() => {
+        db.exec(`
+          DELETE FROM timetable_entries;
+          DELETE FROM conflicts;
+          DELETE FROM generation_jobs;
+          DELETE FROM activity_student_assignments;
+          DELETE FROM activity_teacher_assignments;
+          DELETE FROM activity_required_equipment;
+          DELETE FROM activity_relations;
+          DELETE FROM activities;
+          DELETE FROM course_required_equipment;
+          DELETE FROM courses;
+          DELETE FROM fet_import_history;
+          DELETE FROM uploaded_files;
+        `);
+      });
+
+      if (isPostgresConfigured) {
+        await writeThroughPg('DELETE FROM timetable_entries', []);
+        await writeThroughPg('DELETE FROM conflicts', []);
+        await writeThroughPg('DELETE FROM activities', []);
+        await writeThroughPg('DELETE FROM courses', []);
+      }
+
+      return res.json({
+        success: true,
+        message: 'All timetable entries, curriculum subjects, and activity allocations cleared successfully.'
+      });
+    }
+
+    // Default: FULL_FACTORY_RESET
+    console.log('Initiating complete factory clean data reset...');
+    seedDatabase(true);
+    if (isPostgresConfigured) {
+      await seedPostgres(true);
+    }
+
+    return res.json({
+      success: true,
+      message: 'Full system data cleaned and reset to clean 4-department configuration.'
+    });
+  } catch (err: any) {
+    console.error('Clean data error:', err);
+    res.status(500).json({ success: false, error: err.message || 'Failed to clean data' });
+  }
+});
+
 apiRouter.post('/admin/reset-database', async (req: Request, res: Response) => {
   try {
     console.log('Initiating database reset to clean 4-department configuration...');

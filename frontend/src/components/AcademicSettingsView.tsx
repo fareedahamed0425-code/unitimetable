@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api';
 
-type TabType = 'periods' | 'venues' | 'cohorts';
+type TabType = 'periods' | 'venues' | 'cohorts' | 'cleanup';
 
 interface TimeSlotItem {
   id: string;
@@ -73,6 +73,12 @@ export const AcademicSettingsView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Cleanup tab state
+  const [cleanScope, setCleanScope] = useState<'TIMETABLE_ENTRIES_ONLY' | 'ALL_TIMETABLES_AND_SESSIONS' | 'CLEAR_CURRICULUM_AND_ACTIVITIES' | 'FULL_FACTORY_RESET'>('TIMETABLE_ENTRIES_ONLY');
+  const [isCleaning, setIsCleaning] = useState(false);
+  const [cleanConfirmAccepted, setCleanConfirmAccepted] = useState(false);
+  const [cleanupFeedback, setCleanupFeedback] = useState<{ success: boolean; text: string } | null>(null);
 
   // Time Slots state (with Year-Specific Periods Support)
   const [slots, setSlots] = useState<TimeSlotItem[]>([]);
@@ -382,6 +388,31 @@ export const AcademicSettingsView: React.FC = () => {
     }
   };
 
+  const handleExecuteCleanup = async (customScope?: any) => {
+    const scopeToUse = customScope || cleanScope;
+    setIsCleaning(true);
+    setCleanupFeedback(null);
+    try {
+      const res = await api.cleanData(scopeToUse);
+      if (res.success) {
+        showToast(res.message || 'System data cleaned successfully!');
+        setCleanupFeedback({ success: true, text: res.message || 'Data cleaned successfully!' });
+        setCleanConfirmAccepted(false);
+        loadSlots();
+        loadVenues();
+        loadCohorts();
+      } else {
+        showToast(res.error || 'Cleanup operation failed', true);
+        setCleanupFeedback({ success: false, text: res.error || 'Cleanup operation failed' });
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to clean data', true);
+      setCleanupFeedback({ success: false, text: err.message || 'Failed to clean data' });
+    } finally {
+      setIsCleaning(false);
+    }
+  };
+
   // Filtered Slots
   const filteredSlots = slots.filter(s => {
     if (!slotSearch) return true;
@@ -491,6 +522,19 @@ export const AcademicSettingsView: React.FC = () => {
             <GraduationCap className="w-4 h-4" />
             <span>Years, Batches & Sections</span>
             <span className="px-2 py-0.5 rounded-full text-xs bg-slate-800 text-slate-400">4 Years</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('cleanup')}
+            className={`flex items-center gap-2.5 px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
+              activeTab === 'cleanup'
+                ? 'border-rose-500 text-rose-400 bg-rose-500/10 rounded-t-lg'
+                : 'border-transparent text-slate-400 hover:text-rose-300 hover:bg-slate-900/50'
+            }`}
+          >
+            <Trash2 className="w-4 h-4 text-rose-400" />
+            <span>Data Cleanup & Reset</span>
+            <span className="px-2 py-0.5 rounded-full text-xs bg-rose-950/80 text-rose-400 border border-rose-800/40">Clean</span>
           </button>
         </div>
       </div>
@@ -1095,6 +1139,155 @@ export const AcademicSettingsView: React.FC = () => {
               </div>
             );
           })()}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 4: SYSTEM DATA CLEANUP & RESET                                        */}
+      {/* ========================================================================= */}
+      {activeTab === 'cleanup' && (
+        <div className="space-y-6">
+          <div className="bg-slate-900/60 p-5 rounded-2xl border border-rose-900/40 backdrop-blur space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-100">System Data Management & Cleanup Console</h2>
+                <p className="text-xs text-slate-400">
+                  Selectively clear active timetables, purge schedule entries across semesters, or perform a total factory reset.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[
+              {
+                id: 'TIMETABLE_ENTRIES_ONLY',
+                title: '🧹 Clear Active Timetable Grid Only',
+                desc: 'Removes all scheduled classes and conflicts for the active timetable. Master faculties, courses, rooms, and sections remain intact.',
+                badge: 'Recommended for Re-scheduling',
+                badgeColor: 'bg-sky-950/80 text-sky-400 border-sky-800'
+              },
+              {
+                id: 'ALL_TIMETABLES_AND_SESSIONS',
+                title: '🗑️ Clear All Timetable Schedules',
+                desc: 'Purges all scheduled classes across all 4 academic years, semesters, and saved draft timetable versions.',
+                badge: 'Multi-Semester Wipe',
+                badgeColor: 'bg-amber-950/80 text-amber-400 border-amber-800'
+              },
+              {
+                id: 'CLEAR_CURRICULUM_AND_ACTIVITIES',
+                title: '📦 Clear Timetables & Curriculum Subjects',
+                desc: 'Clears all scheduled sessions, course entries, subject assignments, and uploaded Excel data so you can import a fresh Excel file cleanly.',
+                badge: 'Pre-Import Clean',
+                badgeColor: 'bg-purple-950/80 text-purple-400 border-purple-800'
+              },
+              {
+                id: 'FULL_FACTORY_RESET',
+                title: '⚡ Complete Factory Clean Reset (Total Wipe)',
+                desc: 'Wipes all uploaded data and resets the entire database to the clean 4-department baseline (CSE, AI&DS, AI&ML, Cyber Security) with official time slots and Super Admin credentials.',
+                badge: 'Factory Default',
+                badgeColor: 'bg-rose-950/80 text-rose-400 border-rose-800'
+              }
+            ].map(opt => (
+              <div
+                key={opt.id}
+                onClick={() => setCleanScope(opt.id as any)}
+                className={`p-5 rounded-2xl border transition-all cursor-pointer space-y-3 ${
+                  cleanScope === opt.id
+                    ? 'bg-rose-950/30 border-rose-500 ring-2 ring-rose-500/30 shadow-lg shadow-rose-950/40'
+                    : 'bg-slate-900/40 border-slate-800 hover:border-slate-700 hover:bg-slate-900/70'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-bold text-sm text-slate-100">{opt.title}</div>
+                  <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${opt.badgeColor}`}>
+                    {opt.badge}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">{opt.desc}</p>
+                <div className="pt-2 flex items-center justify-between border-t border-slate-800/80">
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    {cleanScope === opt.id ? '✓ Selected for Execution' : 'Click to select this scope'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`Are you sure you want to execute: "${opt.title}"?`)) {
+                        handleExecuteCleanup(opt.id);
+                      }
+                    }}
+                    disabled={isCleaning}
+                    className="px-3 py-1 bg-rose-900/50 hover:bg-rose-800 text-rose-200 rounded-lg text-xs font-semibold border border-rose-700/50 transition flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Quick Clean</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Safety Checkbox & Main Action Bar */}
+          <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 space-y-4">
+            <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-800/50 text-amber-300 text-xs">
+              <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={cleanConfirmAccepted}
+                  onChange={e => setCleanConfirmAccepted(e.target.checked)}
+                  className="mt-0.5 rounded bg-slate-950 border-amber-600 text-rose-600 focus:ring-rose-500"
+                />
+                <span className="leading-relaxed">
+                  <strong>Permanent Data Deletion Acknowledgment:</strong> I understand that executing this cleanup will permanently wipe the selected database tables and cannot be undone.
+                </span>
+              </label>
+            </div>
+
+            {cleanupFeedback && (
+              <div
+                className={`p-4 rounded-xl border text-xs font-semibold flex items-center gap-2.5 ${
+                  cleanupFeedback.success
+                    ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
+                    : 'bg-rose-950/40 border-rose-800/60 text-rose-300'
+                }`}
+              >
+                {cleanupFeedback.success ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                )}
+                <span>{cleanupFeedback.text}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-2">
+              <div className="text-xs text-slate-400">
+                Active Selection: <strong className="text-rose-400">{cleanScope}</strong>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleExecuteCleanup()}
+                disabled={isCleaning || !cleanConfirmAccepted}
+                className="px-6 py-2.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold shadow-lg shadow-rose-600/30 flex items-center gap-2 transition"
+              >
+                {isCleaning ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Executing Cleanup...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Execute Selected Cleanup</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -470,13 +470,21 @@ export const api = {
     return res.json();
   },
 
-  // Admin Database Reset
-  async resetDatabase(): Promise<{ success: boolean; message?: string; error?: string }> {
-    const res = await fetch(url('admin/reset-database'), {
+  // Admin Data Clean & Reset
+  async cleanData(
+    mode: 'TIMETABLE_ENTRIES_ONLY' | 'ALL_TIMETABLES_AND_SESSIONS' | 'CLEAR_CURRICULUM_AND_ACTIVITIES' | 'FULL_FACTORY_RESET',
+    timetableId?: string
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
+    const res = await fetch(url('admin/clean-data'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, timetableId: timetableId || 'tt-active' })
     });
     return res.json();
+  },
+
+  async resetDatabase(): Promise<{ success: boolean; message?: string; error?: string }> {
+    return this.cleanData('FULL_FACTORY_RESET');
   },
 
   // Migrate: Add Saturday time slots to existing DB (no data loss)
