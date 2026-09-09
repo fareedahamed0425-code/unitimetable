@@ -1,25 +1,30 @@
 # ==============================================================================
-# University Timetable Management Platform - Backend Standalone Dockerfile
-# Compatible with both Root Context and Backend Subdirectory Context on Render
+# University Timetable Management Platform - Backend Dedicated Dockerfile
+# Base: Node 22 (required for better-sqlite3 >= 13.0.0 and glibc stability)
 # ==============================================================================
-FROM node:20-alpine AS base
+FROM node:22-bookworm-slim AS base
 
-# Install build tools for native C++ SQLite bindings (better-sqlite3) and curl
-RUN apk add --no-cache python3 make g++ curl
+# Install build dependencies for native C++ modules and curl for health check
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app/backend
 
 # Copy package manifests
 COPY package.json package-lock.json* ./
 
-# Install dependencies and rebuild better-sqlite3 for Alpine Linux
-RUN npm install --omit=dev || npm install
+# Install dependencies including tsx and rebuild native SQLite
+RUN npm install
 RUN npm rebuild better-sqlite3
 
 # Copy backend source
 COPY . .
 
-# Ensure shared directory is populated at /app/shared for relative imports (../../../shared/types)
+# Ensure shared types are available at /app/shared for relative imports (../../../shared/types)
 RUN mkdir -p /app/shared && \
     if [ -d "shared" ]; then cp -rf shared/* /app/shared/; fi
 
@@ -35,5 +40,5 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:${PORT}/health || exit 1
 
-# Launch the backend server
+# Launch backend
 CMD ["npx", "tsx", "src/server.ts"]

@@ -1,10 +1,12 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "University Timetable Backend Service",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "tsx src/server.ts",
+    "build": "tsc",
+    "test": "tsx src/tests/test_all.ts"
   },
   "keywords": [],
   "author": "",
@@ -16,14 +18,14 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "fast-xml-parser": "^5.11.1",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
-    "@types/node": "^26.4.0",
-    "tsx": "^4.23.12",
-    "typescript": "^7.0.2"
+    "@types/node": "^26.4.0"
   }
 }

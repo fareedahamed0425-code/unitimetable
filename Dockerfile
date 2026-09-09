@@ -1,32 +1,37 @@
 # ==============================================================================
 # University Timetable Management Platform - Production Root Dockerfile
+# Base: Node 22 (required for better-sqlite3 >= 13.0.0 and glibc stability)
 # ==============================================================================
-FROM node:20-alpine AS base
+FROM node:22-bookworm-slim AS base
 
-# Install build tools for native C++ SQLite bindings (better-sqlite3) and curl for health check
-RUN apk add --no-cache python3 make g++ curl
+# Install build dependencies for native C++ modules and curl for health check
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy root workspace and package manifests first to leverage Docker layer caching
+# Copy root workspace and package manifests
 COPY package.json package-lock.json* ./
 COPY backend/package.json ./backend/
 COPY shared/package.json* ./shared/
 COPY frontend/package.json* ./frontend/
 
-# Install backend dependencies
+# Install dependencies
 RUN npm ci --workspace=backend || npm install --workspace=backend
 
-# Rebuild native better-sqlite3 for Alpine Linux
-WORKDIR /app/backend
-RUN npm rebuild better-sqlite3
-
-# Copy backend source code and shared domain models
-WORKDIR /app
+# Copy source code
 COPY shared/ ./shared/
 COPY backend/ ./backend/
 
-# Ensure SQLite data directory exists
+# Rebuild native SQLite addon in target environment
+WORKDIR /app/backend
+RUN npm rebuild better-sqlite3
+
+# Create persistent data directory
 RUN mkdir -p /app/backend/data
 
 # Environment configuration
@@ -38,6 +43,5 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:${PORT}/health || exit 1
 
-# Start the backend server
-WORKDIR /app/backend
+# Start the backend server directly with tsx
 CMD ["npx", "tsx", "src/server.ts"]
