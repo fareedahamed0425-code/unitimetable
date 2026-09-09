@@ -432,6 +432,58 @@ export const api = {
     return res.json();
   },
 
+  // AI Natural Language Timetable Assistant
+  async aiTimetableEdit(prompt: string, timetableId: string = 'tt-active'): Promise<{
+    success: boolean;
+    data?: {
+      originalPrompt: string;
+      summary: string;
+      reasoning?: string;
+      operations: any[];
+      affectedSections: string[];
+      affectedTeachers: string[];
+      affectedCourses: string[];
+      constraintStatus: {
+        hasConflicts: boolean;
+        conflictsCount: number;
+        hardConstraintSatisfied: boolean;
+        roomCapacitySatisfied: boolean;
+        facultyAvailable: boolean;
+        details: string[];
+      };
+      previewEntries: {
+        title: string;
+        section: string;
+        teacher: string;
+        room: string;
+        time: string;
+        action: string;
+      }[];
+      canAutoApply: boolean;
+    };
+    error?: string;
+  }> {
+    const res = await fetch(url('timetables/ai-edit-prompt'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, timetableId })
+    });
+    return res.json();
+  },
+
+  async aiApplyTimetableChanges(operations: any[], timetableId: string = 'tt-active'): Promise<{
+    success: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    const res = await fetch(url('timetables/ai-apply-changes'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operations, timetableId })
+    });
+    return res.json();
+  },
+
   // Analytics & Audit
   async getAnalytics(): Promise<any> {
     const res = await fetch(url('analytics'));

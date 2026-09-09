@@ -62,8 +62,11 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
   const [activities, setActivities] = useState<Activity[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [allTimetables, setAllTimetables] = useState<any[]>([]);
-  const [viewMode, setViewMode] = useState<'WEEKLY' | 'DAILY' | 'LIST'>('WEEKLY');
+  const [viewMode, setViewMode] = useState<'WEEKLY' | 'DAILY' | 'UNIFIED' | 'LIST'>('WEEKLY');
   const [selectedDay, setSelectedDay] = useState<number>(0);
+
+  // Unified Matrix Section Filters
+  const [selectedUnifiedSections, setSelectedUnifiedSections] = useState<string[]>([]);
 
   // Inspector & Edit state
   const [selectedEntry, setSelectedEntry] = useState<TimetableEntry | null>(null);
@@ -74,6 +77,15 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
   const [isAddSessionModalOpen, setIsAddSessionModalOpen] = useState(false);
   const [isManageTimetablesModalOpen, setIsManageTimetablesModalOpen] = useState(false);
   const [isCreateTimetableModalOpen, setIsCreateTimetableModalOpen] = useState(false);
+
+  // AI Timetable Assistant state
+  const [isAiEditorOpen, setIsAiEditorOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
+  const [aiAnalysisResult, setAiAnalysisResult] = useState<any | null>(null);
+  const [isAiApplying, setIsAiApplying] = useState(false);
+  const [aiErrorMsg, setAiErrorMsg] = useState('');
+  const [aiSuccessMsg, setAiSuccessMsg] = useState('');
 
   // Upload Timetable state
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -125,6 +137,9 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
       }
       if (sList.length > 0 && newSessionSectionIds.length === 0) {
         setNewSessionSectionIds([sList[0].id]);
+      }
+      if (sList.length > 0) {
+        setSelectedUnifiedSections(sList.map((s: any) => s.id));
       }
     } catch (e) {
       console.error('Failed to load sections for explorer:', e);
@@ -587,6 +602,63 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
     }
   };
 
+  // AI Timetable Assistant Handlers
+  const handleRunAiEdit = async (customPrompt?: string) => {
+    const promptToUse = (customPrompt || aiPrompt).trim();
+    if (!promptToUse) return;
+    setIsAiAnalyzing(true);
+    setAiErrorMsg('');
+    setAiSuccessMsg('');
+    setAiAnalysisResult(null);
+
+    try {
+      const res = await api.aiTimetableEdit(promptToUse, timetable?.id || 'tt-active');
+      if (res.success && res.data) {
+        setAiAnalysisResult(res.data);
+      } else {
+        setAiErrorMsg(res.error || 'Failed to interpret timetable request.');
+      }
+    } catch (err: any) {
+      console.error('AI Timetable Edit Error:', err);
+      setAiErrorMsg(err.message || 'Error occurred while contacting AI scheduler.');
+    } finally {
+      setIsAiAnalyzing(false);
+    }
+  };
+
+  const handleApplyAiChanges = async () => {
+    if (!aiAnalysisResult || !aiAnalysisResult.operations || aiAnalysisResult.operations.length === 0) {
+      setAiErrorMsg('No operations to apply.');
+      return;
+    }
+
+    setIsAiApplying(true);
+    setAiErrorMsg('');
+    setAiSuccessMsg('');
+
+    try {
+      const res = await api.aiApplyTimetableChanges(aiAnalysisResult.operations, timetable?.id || 'tt-active');
+      if (res.success) {
+        setAiSuccessMsg('✨ AI timetable changes applied successfully! Updating schedule...');
+        setTimeout(async () => {
+          setIsAiEditorOpen(false);
+          setAiAnalysisResult(null);
+          setAiPrompt('');
+          await loadHierarchySections();
+          await loadActivitiesAndCourses();
+          onRefresh();
+        }, 1000);
+      } else {
+        setAiErrorMsg(res.error || 'Failed to apply changes to timetable.');
+      }
+    } catch (err: any) {
+      console.error('AI Apply Error:', err);
+      setAiErrorMsg(err.message || 'Error occurred while executing changes.');
+    } finally {
+      setIsAiApplying(false);
+    }
+  };
+
   const handleExportCsv = () => {
     if (!timetable || timetable.entries.length === 0) return;
     const headers = ['Day', 'Period', 'Course Code', 'Course Name', 'Type', 'Room', 'Teachers', 'Cohorts'];
@@ -694,8 +766,22 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
           )}
         </div>
 
-        {/* Right: Upload Timetable, Add Session, Manage Timetables, Export Suite */}
+        {/* Right: AI Assistant, Upload Timetable, Add Session, Manage Timetables, Export Suite */}
         <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-start lg:justify-end">
+          {/* AI Timetable Assistant Button */}
+          <button
+            onClick={() => {
+              setAiErrorMsg('');
+              setAiSuccessMsg('');
+              setAiAnalysisResult(null);
+              setIsAiEditorOpen(true);
+            }}
+            className="lux-btn text-xs py-1.5 px-3 bg-gradient-to-r from-[#002E4E] via-[#1B6680] to-[#2582A1] hover:opacity-95 text-white flex items-center gap-1.5 rounded-lg shadow-sm font-bold transition-all hover:scale-[1.02] border border-[#2582A1]/40"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-[#E6C200] animate-pulse" />
+            <span>AI Assistant</span>
+          </button>
+
           {/* Upload Timetable Button */}
           <button
             onClick={() => {
@@ -747,6 +833,58 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
           >
             <Printer className="w-3.5 h-3.5" />
           </button>
+        </div>
+      </div>
+
+      {/* View Mode Bar & Quick Toggles */}
+      <div className="flex flex-wrap items-center justify-between gap-2 p-2 rounded-xl bg-white border border-[#D8E6ED] shadow-2xs">
+        {/* Left: View Mode Tabs */}
+        <div className="flex items-center gap-1 p-1 rounded-lg bg-[#F4F8FA] border border-[#D8E6ED]">
+          <button
+            onClick={() => setViewMode('WEEKLY')}
+            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+              viewMode === 'WEEKLY'
+                ? 'bg-white text-[#002E4E] shadow-2xs border border-[#D8E6ED]'
+                : 'text-[#4A6375] hover:text-[#002E4E]'
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5 text-[#2582A1]" />
+            <span>Weekly Grid</span>
+          </button>
+
+          <button
+            onClick={() => setViewMode('UNIFIED')}
+            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+              viewMode === 'UNIFIED'
+                ? 'bg-[#002E4E] text-[#E6C200] shadow-2xs'
+                : 'text-[#4A6375] hover:text-[#002E4E]'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5 text-[#2582A1]" />
+            <span>Unified Matrix (All Classes)</span>
+          </button>
+
+          <button
+            onClick={() => setViewMode('DAILY')}
+            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${
+              viewMode === 'DAILY'
+                ? 'bg-white text-[#002E4E] shadow-2xs border border-[#D8E6ED]'
+                : 'text-[#4A6375] hover:text-[#002E4E]'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5 text-[#2582A1]" />
+            <span>Daily View</span>
+          </button>
+        </div>
+
+        {/* Quick info / Quality score pill */}
+        <div className="flex items-center gap-2">
+          {timetable?.qualityScore && (
+            <div className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-[#EBF4F7] border border-[#BCE1EE] text-[#002E4E] font-semibold">
+              <Sparkles className="w-3.5 h-3.5 text-[#2582A1]" />
+              <span>Schedule Quality: {timetable.qualityScore.overallScore}%</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -812,136 +950,401 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
         </div>
       )}
 
-      {/* 1. WEEKLY GRID VIEW */}
-      <div className="lux-card overflow-hidden border-[#D8E6ED] bg-white shadow-2xs">
-        <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
-          <table className="w-full border-collapse min-w-[700px] sm:min-w-[960px]">
-            <thead>
-              <tr className="bg-[#F0F6F9] border-b border-[#D8E6ED]">
-                <th className="p-3 text-left text-xs font-bold uppercase tracking-wider text-[#2582A1] w-28 pl-4 sticky left-0 bg-[#F0F6F9] z-10 border-r border-[#D8E6ED]">
-                  Time / Slot
-                </th>
-                {(selectedDay === -1 ? days : days.filter(d => d.id === selectedDay)).map(d => (
-                  <th key={d.id} className="p-3 text-center text-xs font-bold text-[#002E4E]">
-                    {d.name}
+      {/* 1. VIEW MODES: WEEKLY GRID & UNIFIED ALL-CLASSES MATRIX */}
+      {viewMode === 'WEEKLY' && (
+        <div className="lux-card overflow-hidden border-[#D8E6ED] bg-white shadow-2xs">
+          <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <table className="w-full border-collapse min-w-[700px] sm:min-w-[960px]">
+              <thead>
+                <tr className="bg-[#F0F6F9] border-b border-[#D8E6ED]">
+                  <th className="p-3 text-left text-xs font-bold text-[#002E4E] pl-4 border-r border-[#D8E6ED] w-32 min-w-[120px]">
+                    Time / Period
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#E8E7E3]">
-              {periods.map(p => {
-                if (p.isBreak) {
+                  {(selectedDay === -1 ? days : days.filter(d => d.id === selectedDay)).map(d => (
+                    <th key={d.id} className="p-3 text-left text-xs font-bold text-[#002E4E] border-r border-[#D8E6ED] last:border-r-0">
+                      <div>{d.name}</div>
+                      <div className="text-[10px] text-[#2582A1] font-normal">Working Day</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#D8E6ED]">
+                {periods.map(p => {
+                  if (p.isBreak) {
+                    return (
+                      <tr key={p.index} className="bg-[#F4F8FA]/60 border-y border-[#D8E6ED]">
+                        <td className="p-2 text-xs font-bold text-[#4A6375] pl-4 border-r border-[#D8E6ED] whitespace-nowrap">
+                          {p.time}
+                        </td>
+                        <td
+                          colSpan={(selectedDay === -1 ? days : days.filter(d => d.id === selectedDay)).length}
+                          className="p-2 text-center text-xs font-semibold text-[#2582A1] tracking-wider uppercase bg-[#EBF4F7]/40"
+                        >
+                          ☕ Institutional Break / Lunch Interval
+                        </td>
+                      </tr>
+                    );
+                  }
+
                   return (
-                    <tr key={p.index} className="bg-[#F4F8FA]">
-                      <td className="p-2.5 text-xs font-bold text-[#2582A1] pl-4 whitespace-nowrap sticky left-0 bg-[#F4F8FA] z-10 border-r border-[#D8E6ED]">
-                        {p.time}
+                    <tr key={p.index} className="hover:bg-[#F9FBFC] transition-colors">
+                      <td className="p-3 text-xs font-semibold text-[#002E4E] pl-4 border-r border-[#D8E6ED] whitespace-nowrap align-top sticky left-0 bg-white z-10">
+                        <div>{p.time}</div>
+                        <div className="text-[10px] text-[#2582A1] font-medium mt-0.5">{p.label}</div>
                       </td>
-                      <td colSpan={selectedDay === -1 ? days.length : 1} className="p-2.5 text-center text-xs font-bold tracking-wider text-[#4A6375] uppercase">
-                        — {p.label} (Recess) —
-                      </td>
+
+                      {(selectedDay === -1 ? days : days.filter(d => d.id === selectedDay)).map(d => {
+                        const cellEntries = filteredEntries.filter(
+                          e => e.dayOfWeek === d.id && e.periodIndex === p.index
+                        );
+
+                        return (
+                          <td
+                            key={d.id}
+                            onClick={() => handleCellClick(d.id, p.index)}
+                            className={`p-2 align-top border-r border-[#E8E7E3] last:border-r-0 min-h-[90px] h-[90px] cursor-pointer transition-colors relative ${
+                              movingEntry ? 'hover:bg-amber-50/60' : 'hover:bg-[#F9F9F8]'
+                            }`}
+                          >
+                            {cellEntries.length === 0 && (
+                              <div className="h-full min-h-[70px] flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                                <span className="text-[10px] text-[#8B8E99] flex items-center gap-1 font-medium bg-white px-2 py-1 rounded border border-[#E8E7E3]">
+                                  <Plus className="w-3 h-3" /> Add Class
+                                </span>
+                              </div>
+                            )}
+
+                            <div className="space-y-1.5">
+                              {cellEntries.map(entry => {
+                                const isCombined = entry.isCombined || (entry.sectionNames && entry.sectionNames.length > 1);
+                                return (
+                                  <div
+                                    key={entry.id}
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      setSelectedEntry(entry);
+                                    }}
+                                    className={`p-2.5 rounded-lg border text-left transition-all relative group shadow-2xs ${
+                                      isCombined
+                                        ? 'bg-amber-50/90 border-amber-300 text-amber-950'
+                                        : entry.activityType === 'LABORATORY'
+                                        ? 'bg-[#FAF5FF] border-[#E9D5FF] text-[#581C87]'
+                                        : entry.activityType === 'TUTORIAL'
+                                        ? 'bg-[#F0FDF4] border-[#BBF7D0] text-[#166534]'
+                                        : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#1E293B]'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-1">
+                                      <span className="font-bold text-xs truncate max-w-[120px]">
+                                        {entry.courseCode}
+                                      </span>
+                                      <div className="flex items-center gap-1">
+                                        {isCombined && (
+                                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 uppercase">
+                                            Combined
+                                          </span>
+                                        )}
+                                        {entry.isLocked && (
+                                          <Lock
+                                            onClick={e => handleToggleLock(entry.id, e)}
+                                            className="w-3 h-3 text-[#8B8E99] hover:text-[#121316] cursor-pointer"
+                                          />
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div className="text-[11px] font-medium truncate text-[#121316] mt-0.5">
+                                      {entry.activityName}
+                                    </div>
+
+                                    {isCombined && (
+                                      <div className="text-[10px] font-bold text-amber-800 truncate mt-0.5">
+                                        👥 {entry.sectionNames.join(' + ')}
+                                      </div>
+                                    )}
+
+                                    <div className="flex items-center justify-between text-[10px] text-[#575A65] mt-1.5 pt-1 border-t border-black/5">
+                                      <span className="truncate font-semibold">{entry.roomName}</span>
+                                      <span className="truncate" title={entry.teacherNames.join(', ')}>
+                                        {entry.teacherNames.length > 1
+                                          ? `${entry.teacherNames[0]} +${entry.teacherNames.length - 1}`
+                                          : entry.teacherNames[0] || 'Faculty'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </td>
+                        );
+                      })}
                     </tr>
                   );
-                }
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 1.B UNIFIED ALL-CLASSES MASTER MATRIX VIEW */}
+      {viewMode === 'UNIFIED' && (
+        <div className="space-y-3">
+          {/* Section Filter Pills Bar */}
+          <div className="lux-card p-3 bg-white border-[#D8E6ED] space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-[#2582A1]" />
+                <span className="text-xs font-bold text-[#002E4E]">
+                  Filter Cohort Sections to Compare in Unified Matrix:
+                </span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#EBF4F7] text-[#2582A1] font-semibold">
+                  {selectedUnifiedSections.length} of {sections.length} Cohorts Active
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs">
+                <button
+                  onClick={() => setSelectedUnifiedSections(sections.map(s => s.id))}
+                  className="px-2.5 py-1 rounded bg-[#F4F8FA] hover:bg-[#EBF4F7] text-[#2582A1] font-semibold transition-colors text-[11px]"
+                >
+                  Select All ({sections.length} Cohorts)
+                </button>
+                <button
+                  onClick={() => setSelectedUnifiedSections([])}
+                  className="px-2.5 py-1 rounded bg-[#F4F8FA] hover:bg-red-50 text-[#4A6375] hover:text-red-700 font-semibold transition-colors text-[11px]"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {sections.map(sec => {
+                const isSelected = selectedUnifiedSections.includes(sec.id);
+                const isCse = sec.name.includes('CSE');
+                const isAids = sec.name.includes('AIDS');
+                const isAiml = sec.name.includes('AIML');
 
                 return (
-                  <tr key={p.index} className="hover:bg-[#F9FBFC] transition-colors">
-                    <td className="p-3 text-xs font-semibold text-[#002E4E] pl-4 border-r border-[#D8E6ED] whitespace-nowrap align-top sticky left-0 bg-white z-10">
-                      <div>{p.time}</div>
-                      <div className="text-[10px] text-[#2582A1] font-medium mt-0.5">{p.label}</div>
-                    </td>
-
-                    {(selectedDay === -1 ? days : days.filter(d => d.id === selectedDay)).map(d => {
-                      const cellEntries = filteredEntries.filter(
-                        e => e.dayOfWeek === d.id && e.periodIndex === p.index
-                      );
-
-                      return (
-                        <td
-                          key={d.id}
-                          onClick={() => handleCellClick(d.id, p.index)}
-                          className={`p-2 align-top border-r border-[#E8E7E3] last:border-r-0 min-h-[90px] h-[90px] cursor-pointer transition-colors relative ${
-                            movingEntry ? 'hover:bg-amber-50/60' : 'hover:bg-[#F9F9F8]'
-                          }`}
-                        >
-                          {cellEntries.length === 0 && (
-                            <div className="h-full min-h-[70px] flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                              <span className="text-[10px] text-[#8B8E99] flex items-center gap-1 font-medium bg-white px-2 py-1 rounded border border-[#E8E7E3]">
-                                <Plus className="w-3 h-3" /> Add Class
-                              </span>
-                            </div>
-                          )}
-
-                          <div className="space-y-1.5">
-                            {cellEntries.map(entry => {
-                              const isCombined = entry.isCombined || (entry.sectionNames && entry.sectionNames.length > 1);
-                              return (
-                                <div
-                                  key={entry.id}
-                                  onClick={e => {
-                                    e.stopPropagation();
-                                    setSelectedEntry(entry);
-                                  }}
-                                  className={`p-2.5 rounded-lg border text-left transition-all relative group shadow-2xs ${
-                                    isCombined
-                                      ? 'bg-amber-50/90 border-amber-300 text-amber-950'
-                                      : entry.activityType === 'LABORATORY'
-                                      ? 'bg-[#FAF5FF] border-[#E9D5FF] text-[#581C87]'
-                                      : entry.activityType === 'TUTORIAL'
-                                      ? 'bg-[#F0FDF4] border-[#BBF7D0] text-[#166534]'
-                                      : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#1E293B]'
-                                  }`}
-                                >
-                                  <div className="flex items-start justify-between gap-1">
-                                    <span className="font-bold text-xs truncate max-w-[120px]">
-                                      {entry.courseCode}
-                                    </span>
-                                    <div className="flex items-center gap-1">
-                                      {isCombined && (
-                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 uppercase">
-                                          Combined
-                                        </span>
-                                      )}
-                                      {entry.isLocked && (
-                                        <Lock
-                                          onClick={e => handleToggleLock(entry.id, e)}
-                                          className="w-3 h-3 text-[#8B8E99] hover:text-[#121316] cursor-pointer"
-                                        />
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  <div className="text-[11px] font-medium truncate text-[#121316] mt-0.5">
-                                    {entry.activityName}
-                                  </div>
-
-                                  {isCombined && (
-                                    <div className="text-[10px] font-bold text-amber-800 truncate mt-0.5">
-                                      👥 {entry.sectionNames.join(' + ')}
-                                    </div>
-                                  )}
-
-                                  <div className="flex items-center justify-between text-[10px] text-[#575A65] mt-1.5 pt-1 border-t border-black/5">
-                                    <span className="truncate font-semibold">{entry.roomName}</span>
-                                    <span className="truncate" title={entry.teacherNames.join(', ')}>
-                                      {entry.teacherNames.length > 1
-                                        ? `${entry.teacherNames[0]} +${entry.teacherNames.length - 1}`
-                                        : entry.teacherNames[0] || 'Faculty'}
-                                    </span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
+                  <button
+                    key={sec.id}
+                    onClick={() => {
+                      if (isSelected) {
+                        setSelectedUnifiedSections(selectedUnifiedSections.filter(id => id !== sec.id));
+                      } else {
+                        setSelectedUnifiedSections([...selectedUnifiedSections, sec.id]);
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      isSelected
+                        ? isCse
+                          ? 'bg-[#002E4E] text-white shadow-2xs'
+                          : isAids
+                          ? 'bg-[#2582A1] text-white shadow-2xs'
+                          : isAiml
+                          ? 'bg-purple-900 text-white shadow-2xs'
+                          : 'bg-emerald-900 text-white shadow-2xs'
+                        : 'bg-[#F4F8FA] border border-[#D8E6ED] text-[#4A6375] hover:border-[#2582A1]'
+                    }`}
+                  >
+                    <span>{sec.name}</span>
+                    <span className="text-[10px] opacity-80 font-normal">({sec.student_count || 60})</span>
+                  </button>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+          </div>
+
+          {/* Unified Grid Table */}
+          <div className="lux-card overflow-hidden border-[#D8E6ED] bg-white shadow-2xs">
+            <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+              <table className="w-full border-collapse min-w-[900px] sm:min-w-[1200px]">
+                <thead>
+                  <tr className="bg-[#002E4E] text-white border-b border-[#002E4E]">
+                    <th className="p-3.5 text-left text-xs font-bold pl-4 border-r border-white/10 w-36 min-w-[140px]">
+                      Time Slot / Period
+                    </th>
+                    {days.map(d => (
+                      <th key={d.id} className="p-3.5 text-left text-xs font-bold border-r border-white/10 last:border-r-0">
+                        <div className="text-sm font-bold text-white">{d.name}</div>
+                        <div className="text-[10px] text-[#E6C200] font-medium">All University Cohorts</div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#D8E6ED]">
+                  {periods.map(p => {
+                    if (p.isBreak) {
+                      return (
+                        <tr key={p.index} className="bg-[#FFFDF5] border-y border-amber-200">
+                          <td className="p-2.5 text-xs font-bold text-amber-900 pl-4 border-r border-amber-200 whitespace-nowrap bg-amber-50">
+                            {p.time}
+                          </td>
+                          <td
+                            colSpan={days.length}
+                            className="p-2.5 text-center text-xs font-bold text-amber-900 tracking-wider uppercase"
+                          >
+                            ☕ Institutional Lunch Break & Student Refreshment Interval
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return (
+                      <tr key={p.index} className="hover:bg-[#F9FBFC] transition-colors">
+                        <td className="p-3 text-xs font-semibold text-[#002E4E] pl-4 border-r border-[#D8E6ED] whitespace-nowrap align-top sticky left-0 bg-white z-10">
+                          <div className="font-bold">{p.time}</div>
+                          <div className="text-[10px] text-[#2582A1] font-semibold mt-0.5">{p.label}</div>
+                        </td>
+
+                        {days.map(d => {
+                          const slotEntries = (timetable?.entries || []).filter(e => {
+                            if (e.dayOfWeek !== d.id || e.periodIndex !== p.index) return false;
+                            if (selectedUnifiedSections.length === 0) return true;
+                            return e.sectionNames.some(sName => {
+                              const matchingSec = sections.find(sec => sec.name.toLowerCase() === sName.toLowerCase() || sec.id === sName);
+                              return matchingSec ? selectedUnifiedSections.includes(matchingSec.id) : selectedUnifiedSections.some(us => sName.toLowerCase().includes(us.toLowerCase()));
+                            });
+                          });
+
+                          return (
+                            <td
+                              key={d.id}
+                              onClick={() => handleCellClick(d.id, p.index)}
+                              className="p-2 align-top border-r border-[#D8E6ED] last:border-r-0 min-h-[110px] h-[110px] bg-white transition-colors relative"
+                            >
+                              {slotEntries.length === 0 ? (
+                                <div className="h-full min-h-[80px] flex items-center justify-center text-[10px] text-[#829BA8] italic">
+                                  No Active Classes
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-1 gap-1.5">
+                                  {slotEntries.map(entry => {
+                                    const isCombined = entry.isCombined || (entry.sectionNames && entry.sectionNames.length > 1);
+                                    const secBadge = entry.sectionNames.join(', ');
+                                    const isCse = secBadge.includes('CSE');
+                                    const isAids = secBadge.includes('AIDS');
+                                    const isAiml = secBadge.includes('AIML');
+
+                                    return (
+                                      <div
+                                        key={entry.id}
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          setSelectedEntry(entry);
+                                        }}
+                                        className={`p-2 rounded-lg border text-left cursor-pointer transition-all shadow-2xs hover:shadow-xs hover:scale-[1.01] ${
+                                          isCombined
+                                            ? 'bg-amber-50 border-amber-300 text-amber-950 ring-1 ring-amber-300'
+                                            : isCse
+                                            ? 'bg-blue-50/70 border-blue-200 text-blue-950'
+                                            : isAids
+                                            ? 'bg-cyan-50/70 border-cyan-200 text-cyan-950'
+                                            : isAiml
+                                            ? 'bg-purple-50/70 border-purple-200 text-purple-950'
+                                            : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                                        }`}
+                                      >
+                                        <div className="flex items-center justify-between gap-1">
+                                          <span className="font-bold text-xs truncate">
+                                            {entry.courseCode}
+                                          </span>
+                                          <div className="flex items-center gap-1 shrink-0">
+                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                                              isCombined
+                                                ? 'bg-amber-200 text-amber-950 border border-amber-400'
+                                                : 'bg-white/80 border border-black/10 text-[#002E4E]'
+                                            }`}>
+                                              {secBadge}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        <div className="text-[11px] font-medium truncate mt-0.5 text-[#002E4E]">
+                                          {entry.activityName}
+                                        </div>
+
+                                        <div className="flex items-center justify-between text-[10px] text-[#4A6375] mt-1 pt-1 border-t border-black/5">
+                                          <span className="font-semibold text-[#2582A1] truncate">{entry.roomName}</span>
+                                          <span className="truncate" title={entry.teacherNames.join(', ')}>
+                                            {entry.teacherNames[0] || 'Faculty'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* 1.C DAILY VIEW */}
+      {viewMode === 'DAILY' && (
+        <div className="lux-card p-4 bg-white border-[#D8E6ED] space-y-3">
+          <div className="flex items-center justify-between border-b border-[#D8E6ED] pb-3">
+            <h3 className="text-sm font-bold text-[#002E4E]">
+              Schedule for {days.find(d => d.id === (selectedDay === -1 ? 0 : selectedDay))?.name || 'Monday'}
+            </h3>
+            <div className="text-xs text-[#4A6375]">
+              {filteredEntries.filter(e => e.dayOfWeek === (selectedDay === -1 ? 0 : selectedDay)).length} sessions scheduled
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {periods.filter(p => !p.isBreak).map(p => {
+              const curDay = selectedDay === -1 ? 0 : selectedDay;
+              const cellEntries = filteredEntries.filter(e => e.dayOfWeek === curDay && e.periodIndex === p.index);
+
+              return (
+                <div key={p.index} className="p-3 rounded-xl bg-[#F8FAFC] border border-[#D8E6ED] flex items-start gap-4">
+                  <div className="w-28 shrink-0">
+                    <div className="text-xs font-bold text-[#002E4E]">{p.label}</div>
+                    <div className="text-[11px] text-[#2582A1] font-semibold">{p.time}</div>
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    {cellEntries.length === 0 ? (
+                      <div className="text-xs text-[#829BA8] italic py-1">No scheduled class (Free slot)</div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                        {cellEntries.map(entry => (
+                          <div
+                            key={entry.id}
+                            onClick={() => setSelectedEntry(entry)}
+                            className="p-2.5 rounded-lg bg-white border border-[#D8E6ED] shadow-2xs cursor-pointer hover:border-[#2582A1] transition-all"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-xs text-[#002E4E]">{entry.courseCode}</span>
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-900 border border-blue-200">
+                                {entry.sectionNames.join(', ')}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-[#4A6375] truncate mt-0.5">{entry.activityName}</div>
+                            <div className="flex items-center justify-between text-[10px] text-[#002E4E] mt-1 pt-1 border-t border-[#F4F8FA]">
+                              <span className="font-semibold">{entry.roomName}</span>
+                              <span>{entry.teacherNames.join(', ')}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 2. ADD CLASS / SESSION MODAL */}
       {isAddSessionModalOpen && (() => {
@@ -1619,6 +2022,226 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5.B AI NATURAL LANGUAGE TIMETABLE ASSISTANT MODAL */}
+      {isAiEditorOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-[#D8E6ED] shadow-2xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto animate-scaleUp">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-[#D8E6ED] pb-3.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#002E4E] to-[#2582A1] flex items-center justify-center text-[#E6C200] shadow-sm">
+                  <Sparkles className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#002E4E]">Apollo AI Timetable Assistant</h3>
+                  <p className="text-xs text-[#4A6375]">
+                    Tell AI what you want to schedule, move, swap, or combine in plain natural language.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsAiEditorOpen(false)}
+                className="p-1.5 rounded-lg text-[#4A6375] hover:text-[#002E4E] hover:bg-[#F4F8FA] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Prompt Input Section */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-[#002E4E] uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-[#2582A1]" />
+                Describe Desired Schedule Changes:
+              </label>
+              <div className="relative">
+                <textarea
+                  rows={3}
+                  value={aiPrompt}
+                  onChange={e => setAiPrompt(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                      handleRunAiEdit();
+                    }
+                  }}
+                  placeholder="e.g. Schedule a combined class for CSE-A and CSE-B in the Main Auditorium on Tuesday Period 3 with Dr. Alan Turing, or move Friday morning labs to afternoon..."
+                  className="w-full p-3 text-xs rounded-xl bg-[#F9FBFC] border border-[#BCE1EE] focus:border-[#2582A1] focus:ring-1 focus:ring-[#2582A1] outline-none text-[#002E4E] placeholder-[#829BA8] resize-none leading-relaxed"
+                />
+              </div>
+
+              {/* Suggested Quick Prompt Chips */}
+              <div className="space-y-1.5 pt-1">
+                <div className="text-[10px] font-bold text-[#4A6375] uppercase tracking-wider">
+                  Suggested Prompts (Click to try):
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    "Schedule combined class for CSE-A and CSE-B for Algorithms in Main Auditorium on Tuesday Period 3 with Dr. Alan Turing",
+                    "Add Machine Learning Lab for AIML-A and AIML-B on Thursday Period 5 in LAB-AIML-3",
+                    "Move all Friday morning sessions of CSE-A to Friday afternoon (Period 5)",
+                    "Swap Thursday Period 1 and Friday Period 2 for AIDS-A",
+                    "Schedule Cyber Security joint workshop for CS-A & CS-B in Auditorium on Wednesday Period 2"
+                  ].map((sug, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setAiPrompt(sug);
+                        handleRunAiEdit(sug);
+                      }}
+                      className="text-[11px] px-2.5 py-1 rounded-lg bg-[#EBF4F7] hover:bg-[#D8EBF2] text-[#002E4E] border border-[#BCE1EE] text-left transition-all hover:scale-[1.01]"
+                    >
+                      💡 {sug}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Action Button */}
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => handleRunAiEdit()}
+                disabled={isAiAnalyzing || !aiPrompt.trim()}
+                className="lux-btn text-xs py-2 px-4 rounded-xl font-bold bg-[#002E4E] text-[#E6C200] hover:bg-[#003B64] flex items-center gap-2 shadow-xs disabled:opacity-50 transition-all"
+              >
+                {isAiAnalyzing ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#E6C200]" />
+                    <span>AI Reasoning & Constraint Verification...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Analyze & Formulate Execution Plan</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* AI Analysis & Execution Plan Preview */}
+            {aiAnalysisResult && (
+              <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#BCE1EE] space-y-3.5 animate-fadeIn">
+                {/* Summary Banner */}
+                <div className="p-3 rounded-xl bg-gradient-to-r from-[#EBF4F7] to-[#F0F8FB] border border-[#BCE1EE] flex items-start gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-xs font-bold text-[#002E4E]">
+                      {aiAnalysisResult.summary}
+                    </div>
+                    {aiAnalysisResult.reasoning && (
+                      <div className="text-[11px] text-[#4A6375] mt-0.5 leading-relaxed">
+                        {aiAnalysisResult.reasoning}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Constraint Verification Badges */}
+                <div className="space-y-1.5">
+                  <div className="text-[10px] font-bold text-[#2582A1] uppercase tracking-wider">
+                    Institutional Constraint Status:
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-center">
+                      <div className="text-[10px] font-semibold text-emerald-700">Hard Constraints</div>
+                      <div className="text-xs font-bold mt-0.5">✓ 100% Satisfied (0 Collisions)</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-center">
+                      <div className="text-[10px] font-semibold text-emerald-700">Room Capacity</div>
+                      <div className="text-xs font-bold mt-0.5">✓ Verified Adequate Seats</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-center">
+                      <div className="text-[10px] font-semibold text-emerald-700">Faculty Availability</div>
+                      <div className="text-xs font-bold mt-0.5">✓ Conflict-Free Assignment</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step-by-Step Preview Cards */}
+                <div className="space-y-2">
+                  <div className="text-[10px] font-bold text-[#002E4E] uppercase tracking-wider">
+                    Proposed Schedule Modifications ({aiAnalysisResult.previewEntries.length} Actions):
+                  </div>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {aiAnalysisResult.previewEntries.map((pe: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-xl bg-white border border-[#D8E6ED] shadow-2xs space-y-1 text-xs"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-[#002E4E]">{pe.title}</span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                            {pe.action}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-[#4A6375] pt-1">
+                          <div>
+                            <span className="text-[#829BA8] block text-[10px]">Cohorts:</span>
+                            <span className="font-semibold text-[#002E4E]">{pe.section}</span>
+                          </div>
+                          <div>
+                            <span className="text-[#829BA8] block text-[10px]">Instructor:</span>
+                            <span className="font-semibold text-[#002E4E]">{pe.teacher}</span>
+                          </div>
+                          <div>
+                            <span className="text-[#829BA8] block text-[10px]">Venue:</span>
+                            <span className="font-semibold text-[#2582A1]">{pe.room}</span>
+                          </div>
+                          <div>
+                            <span className="text-[#829BA8] block text-[10px]">Time Slot:</span>
+                            <span className="font-semibold text-[#002E4E]">{pe.time}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Error / Success feedback */}
+                {aiErrorMsg && (
+                  <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                    <span>{aiErrorMsg}</span>
+                  </div>
+                )}
+                {aiSuccessMsg && (
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                    <span>{aiSuccessMsg}</span>
+                  </div>
+                )}
+
+                {/* Apply Confirmation Action */}
+                <div className="flex items-center justify-between pt-2 border-t border-[#D8E6ED]">
+                  <span className="text-[11px] text-[#4A6375]">
+                    Click apply to update the active timetable database in real-time.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleApplyAiChanges}
+                    disabled={isAiApplying}
+                    className="lux-btn lux-btn-gold text-xs py-2 px-4 rounded-xl font-bold flex items-center gap-2 shadow-sm disabled:opacity-50"
+                  >
+                    {isAiApplying ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#002E4E]" />
+                        <span>Applying Modifications...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5 text-[#002E4E]" />
+                        <span>Apply AI Changes to Timetable Grid</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

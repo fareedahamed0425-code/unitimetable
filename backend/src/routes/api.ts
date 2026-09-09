@@ -11,6 +11,7 @@ import { ActivityAssignment, TimetableProblemContext } from '../engine/types';
 import { FETExporter } from '../fet/fetExporter';
 import { FETParser } from '../fet/fetParser';
 import { NLPPreferenceParser } from '../nlp/nlpPreferenceParser';
+import { NLPTimetableEditor } from '../nlp/nlpTimetableEditor';
 import { hashPassword, verifyPassword, generateAuthToken } from '../utils/auth';
 import { seedDatabase } from '../db/seed';
 import { seedPostgres } from '../db/seed_postgres';
@@ -2087,3 +2088,249 @@ apiRouter.post('/admin/reset-database', async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: err.message || 'Failed to reset database' });
   }
 });
+
+// ----------------------------------------------------
+// 14. AI NATURAL LANGUAGE TIMETABLE ASSISTANT
+// ----------------------------------------------------
+apiRouter.post('/timetables/ai-edit-prompt', async (req: Request, res: Response) => {
+  try {
+    const { prompt, timetableId = 'tt-active' } = req.body;
+    if (!prompt || typeof prompt !== 'string') {
+      return res.status(400).json({ success: false, error: 'Natural language prompt is required' });
+    }
+
+    const context = buildProblemContext();
+    const entriesRaw = db.prepare('SELECT * FROM timetable_entries WHERE timetable_id = ?').all(timetableId) as any[];
+    const courses = db.prepare('SELECT * FROM courses').all() as Course[];
+    const courseMap = new Map(courses.map(c => [c.id, c]));
+    const teachers = Array.from(context.teachers.values());
+    const rooms = Array.from(context.rooms.values());
+    const sections = db.prepare('SELECT id, name FROM sections').all() as { id: string; name: string }[];
+    const actMap = new Map(context.activities.map(a => [a.id, a]));
+
+    const entries: TimetableEntry[] = entriesRaw.map(e => {
+      const act = actMap.get(e.activity_id);
+      const crs = act ? courseMap.get(act.courseId) : undefined;
+      const rm = context.rooms.get(e.room_id);
+      return {
+        id: e.id,
+        timetableId: e.timetable_id,
+        activityId: e.activity_id,
+        activityName: act?.name || 'Class',
+        courseCode: crs?.code || 'CRS',
+        courseName: crs?.name || 'Course',
+        activityType: act?.activityType || 'LECTURE',
+        teacherIds: act?.teacherIds || [],
+        teacherNames: (act?.teacherIds || []).map(tId => context.teachers.get(tId)?.name || tId),
+        sectionNames: act?.sectionIds || [],
+        groupNames: [],
+        subgroupNames: [],
+        dayOfWeek: e.day_of_week,
+        periodIndex: e.period_index,
+        duration: e.duration,
+        roomId: e.room_id,
+        roomName: rm?.name || e.room_id,
+        buildingName: 'Apollo Tower',
+        isLocked: Boolean(e.is_locked),
+        isCombined: Boolean(act && (act.sectionIds.length > 1 || act.teacherIds.length > 1))
+      };
+    });
+
+    const analysis = await NLPTimetableEditor.analyzePrompt(prompt, {
+      entries,
+      courses,
+      teachers,
+      rooms,
+      sections,
+      problemContext: context
+    });
+
+    res.json({ success: true, data: analysis });
+  } catch (err: any) {
+    console.error('AI Edit Prompt Error:', err);
+    res.status(500).json({ success: false, error: err.message || 'Failed to process AI timetable command' });
+  }
+});
+
+apiRouter.post('/timetables/ai-apply-changes', async (req: Request, res: Response) => {
+  try {
+    const { operations, timetableId = 'tt-active' } = req.body;
+    if (!operations || !Array.isArray(operations) || operations.length === 0) {
+      return res.status(400).json({ success: false, error: 'No operations provided to apply' });
+    }
+
+    const defaultBuilding = 'bld-apollo-tech';
+    const allBatches = db.prepare('SELECT id, program_id FROM batches').all() as any[];
+    const allSems = db.prepare('SELECT id FROM semesters').all() as any[];
+
+    runInTransaction(() => {
+      for (const op of operations) {
+        if (op.type === 'MOVE_ENTRY' && op.entryId) {
+          db.prepare(`
+            UPDATE timetable_entries
+            SET day_of_week = COALESCE(?, day_of_week),
+                period_index = COALESCE(?, period_index),
+                room_id = COALESCE(?, room_id)
+            WHERE id = ?
+          `).run(op.targetDayOfWeek ?? op.dayOfWeek, op.targetPeriodIndex ?? op.periodIndex, op.targetRoomId || null, op.entryId);
+
+          writeThroughPg(`
+            UPDATE timetable_entries
+            SET day_of_week = COALESCE(?, day_of_week),
+                period_index = COALESCE(?, period_index),
+                room_id = COALESCE(?, room_id)
+            WHERE id = ?
+          `, [op.targetDayOfWeek ?? op.dayOfWeek, op.targetPeriodIndex ?? op.periodIndex, op.targetRoomId || null, op.entryId]);
+        } else if (op.type === 'SWAP_ENTRIES' && op.entryIds && op.entryIds.length >= 2) {
+          const e1 = db.prepare('SELECT * FROM timetable_entries WHERE id = ?').get(op.entryIds[0]) as any;
+          const e2 = db.prepare('SELECT * FROM timetable_entries WHERE id = ?').get(op.entryIds[1]) as any;
+          if (e1 && e2) {
+            db.prepare('UPDATE timetable_entries SET day_of_week = ?, period_index = ?, room_id = ? WHERE id = ?')
+              .run(e2.day_of_week, e2.period_index, e2.room_id, e1.id);
+            db.prepare('UPDATE timetable_entries SET day_of_week = ?, period_index = ?, room_id = ? WHERE id = ?')
+              .run(e1.day_of_week, e1.period_index, e1.room_id, e2.id);
+
+            writeThroughPg('UPDATE timetable_entries SET day_of_week = ?, period_index = ?, room_id = ? WHERE id = ?', [e2.day_of_week, e2.period_index, e2.room_id, e1.id]);
+            writeThroughPg('UPDATE timetable_entries SET day_of_week = ?, period_index = ?, room_id = ? WHERE id = ?', [e1.day_of_week, e1.period_index, e1.room_id, e2.id]);
+          }
+        } else if (op.type === 'CREATE_COMBINED' || op.type === 'ADD_SESSION') {
+          const targetSectionIds = op.targetSectionIds || ['sec-cse-a'];
+          const targetTeacherIds = op.targetTeacherIds || ['tch-1'];
+          const courseCode = op.courseCode || 'CS301';
+          const courseName = op.courseName || 'Academic Class';
+          const roomId = op.targetRoomId || 'room-aud-101';
+          const duration = op.duration || 1;
+          const day = op.dayOfWeek || 0;
+          const period = op.periodIndex || 0;
+
+          // 1. Resolve Course
+          let existingCourse = db.prepare('SELECT id FROM courses WHERE code = ?').get(courseCode) as any;
+          let courseId = existingCourse?.id;
+          if (!courseId) {
+            courseId = `crs-${courseCode.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+            db.prepare(`
+              INSERT INTO courses (id, code, name, department_id, program_id, semester_number, credits, course_type, required_room_type)
+              VALUES (?, ?, ?, 'dept-cse', 'prog-cse-btech', 3, 3, ?, ?)
+              ON CONFLICT (id) DO NOTHING
+            `).run(courseId, courseCode, courseName, op.activityType || 'LECTURE', op.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM');
+
+            writeThroughPg(`
+              INSERT INTO courses (id, code, name, department_id, program_id, semester_number, credits, course_type, required_room_type)
+              VALUES (?, ?, ?, 'dept-cse', 'prog-cse-btech', 3, 3, ?, ?)
+              ON CONFLICT (id) DO NOTHING
+            `, [courseId, courseCode, courseName, op.activityType || 'LECTURE', op.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM']);
+          }
+
+          // 2. Create Activity
+          const actId = `act-ai-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+          const actName = `${courseName} (${targetSectionIds.join(', ')})`;
+          const studentCount = targetSectionIds.length * 60;
+
+          db.prepare(`
+            INSERT INTO activities (
+              id, code, name, course_id, activity_type, duration_periods, occurrences_per_week, total_student_count, required_room_type
+            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+          `).run(actId, `ACT-${courseCode}-AI`, actName, courseId, op.activityType || 'LECTURE', duration, studentCount, op.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM');
+
+          writeThroughPg(`
+            INSERT INTO activities (
+              id, code, name, course_id, activity_type, duration_periods, occurrences_per_week, total_student_count, required_room_type
+            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+          `, [actId, `ACT-${courseCode}-AI`, actName, courseId, op.activityType || 'LECTURE', duration, studentCount, op.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM']);
+
+          // 3. Assign Teachers
+          for (const tId of targetTeacherIds) {
+            const ataId = `ata-${actId}-${tId}`;
+            db.prepare('INSERT INTO activity_teacher_assignments (id, activity_id, teacher_id) VALUES (?, ?, ?)').run(ataId, actId, tId);
+            writeThroughPg('INSERT INTO activity_teacher_assignments (id, activity_id, teacher_id) VALUES (?, ?, ?)', [ataId, actId, tId]);
+          }
+
+          // 4. Assign Student Sections
+          for (const sId of targetSectionIds) {
+            const asaId = `asa-${actId}-${sId}`;
+            db.prepare('INSERT INTO activity_student_assignments (id, activity_id, section_id) VALUES (?, ?, ?)').run(asaId, actId, sId);
+            writeThroughPg('INSERT INTO activity_student_assignments (id, activity_id, section_id) VALUES (?, ?, ?)', [asaId, actId, sId]);
+          }
+
+          // 5. Insert Entry
+          const entryId = `ent-ai-${actId}-${day}-${period}`;
+          const explanation = `AI-scheduled session for ${targetSectionIds.join(', ')} with ${targetTeacherIds.join(', ')} in room ${roomId}`;
+
+          db.prepare(`
+            INSERT INTO timetable_entries (id, timetable_id, activity_id, day_of_week, period_index, duration, room_id, is_locked, satisfaction_explanation)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+          `).run(entryId, timetableId, actId, day, period, duration, roomId, explanation);
+
+          writeThroughPg(`
+            INSERT INTO timetable_entries (id, timetable_id, activity_id, day_of_week, period_index, duration, room_id, is_locked, satisfaction_explanation)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+          `, [entryId, timetableId, actId, day, period, duration, roomId, explanation]);
+        } else if (op.type === 'DELETE_ENTRY' && op.entryId) {
+          db.prepare('DELETE FROM timetable_entries WHERE id = ?').run(op.entryId);
+          writeThroughPg('DELETE FROM timetable_entries WHERE id = ?', [op.entryId]);
+        }
+      }
+
+      // Recalculate conflicts and quality score
+      const context = buildProblemContext();
+      const allEntriesRaw = db.prepare('SELECT * FROM timetable_entries WHERE timetable_id = ?').all(timetableId) as any[];
+      const assignments: ActivityAssignment[] = allEntriesRaw.map(e => ({
+        activityId: e.activity_id,
+        dayOfWeek: e.day_of_week,
+        periodIndex: e.period_index,
+        duration: e.duration,
+        roomId: e.room_id,
+        isLocked: Boolean(e.is_locked)
+      }));
+
+      const conflicts = ConflictEngine.detectConflicts(assignments, context);
+      const qualityScore = QualityScorer.calculate(assignments, context);
+
+      db.prepare('UPDATE timetables SET quality_score_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+        JSON.stringify(qualityScore), timetableId
+      );
+      writeThroughPg('UPDATE timetables SET quality_score_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [
+        JSON.stringify(qualityScore), timetableId
+      ]);
+
+      db.prepare('DELETE FROM conflicts WHERE timetable_id = ?').run(timetableId);
+      writeThroughPg('DELETE FROM conflicts WHERE timetable_id = ?', [timetableId]);
+
+      const insertConf = db.prepare(`
+        INSERT INTO conflicts (
+          id, timetable_id, severity, conflict_type, title, description,
+          affected_activity_ids_json, affected_teacher_ids_json, affected_student_group_ids_json,
+          affected_room_ids_json, day_of_week, period_index, violated_constraint_rule, suggested_fix
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      conflicts.forEach(c => {
+        insertConf.run(
+          c.id, timetableId, c.severity, c.conflictType, c.title, c.description,
+          JSON.stringify(c.affectedActivityIds), JSON.stringify(c.affectedTeacherIds),
+          JSON.stringify(c.affectedStudentGroupIds), JSON.stringify(c.affectedRoomIds),
+          c.dayOfWeek, c.periodIndex, c.violatedConstraintRule, c.suggestedFix || null
+        );
+
+        writeThroughPg(`
+          INSERT INTO conflicts (
+            id, timetable_id, severity, conflict_type, title, description,
+            affected_activity_ids_json, affected_teacher_ids_json, affected_student_group_ids_json,
+            affected_room_ids_json, day_of_week, period_index, violated_constraint_rule, suggested_fix
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          c.id, timetableId, c.severity, c.conflictType, c.title, c.description,
+          JSON.stringify(c.affectedActivityIds), JSON.stringify(c.affectedTeacherIds),
+          JSON.stringify(c.affectedStudentGroupIds), JSON.stringify(c.affectedRoomIds),
+          c.dayOfWeek, c.periodIndex, c.violatedConstraintRule, c.suggestedFix || null
+        ]);
+      });
+    });
+
+    res.json({ success: true, message: 'AI timetable changes applied successfully.' });
+  } catch (err: any) {
+    console.error('AI Apply Changes Error:', err);
+    res.status(500).json({ success: false, error: err.message || 'Failed to apply AI timetable changes' });
+  }
+});
+
