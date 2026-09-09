@@ -88,6 +88,9 @@ export const App: React.FC = () => {
 
   const loadInitialData = async () => {
     try {
+      // Auto-migrate Saturday time slots (safe, non-destructive — uses ON CONFLICT DO NOTHING)
+      api.migrateSaturday().catch(() => {});
+
       const [uList, tt, stats, tList, infra, cal, me] = await Promise.all([
         api.getUsers().catch(() => []),
         api.getActiveTimetable().catch(() => null),

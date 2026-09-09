@@ -432,6 +432,15 @@ export const api = {
     return res.json();
   },
 
+  // Migrate: Add Saturday time slots to existing DB (no data loss)
+  async migrateSaturday(): Promise<{ success: boolean; slotsAdded?: number; message?: string; error?: string }> {
+    const res = await fetch(url('admin/migrate-add-saturday'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return res.json();
+  },
+
   // AI Natural Language Timetable Assistant
   async aiTimetableEdit(prompt: string, timetableId: string = 'tt-active'): Promise<{
     success: boolean;

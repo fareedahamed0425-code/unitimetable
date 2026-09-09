@@ -183,7 +183,8 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
     { id: 1, name: 'Tuesday', short: 'Tue' },
     { id: 2, name: 'Wednesday', short: 'Wed' },
     { id: 3, name: 'Thursday', short: 'Thu' },
-    { id: 4, name: 'Friday', short: 'Fri' }
+    { id: 4, name: 'Friday', short: 'Fri' },
+    { id: 5, name: 'Saturday', short: 'Sat' }
   ];
 
   const periods = [
@@ -892,7 +893,7 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
                 : 'bg-white border border-[#D8E6ED] text-[#4A6375] hover:text-[#002E4E]'
             }`}
           >
-            Full Week (5 Days)
+            Full Week (6 Days)
           </button>
           {days.map(d => (
             <button

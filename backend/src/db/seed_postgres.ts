@@ -238,13 +238,14 @@ export async function seedPostgres(force = true): Promise<void> {
       );
     }
 
-    // 8. Time Slots (Monday - Friday, 7 periods per day + 1 lunch break)
+    // 8. Time Slots (Monday - Saturday, 7 periods per day + 1 lunch break)
     const days = [
       { dayOfWeek: 0, name: 'Monday' },
       { dayOfWeek: 1, name: 'Tuesday' },
       { dayOfWeek: 2, name: 'Wednesday' },
       { dayOfWeek: 3, name: 'Thursday' },
-      { dayOfWeek: 4, name: 'Friday' }
+      { dayOfWeek: 4, name: 'Friday' },
+      { dayOfWeek: 5, name: 'Saturday' }
     ];
 
     const periodTemplates = [

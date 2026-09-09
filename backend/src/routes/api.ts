@@ -199,7 +199,7 @@ function buildProblemContext(profileId?: string): TimetableProblemContext {
     isEnabled: Boolean(r.is_enabled)
   }));
 
-  const maxDays = new Set(timeSlots.map(s => s.dayOfWeek)).size || 5;
+  const maxDays = new Set(timeSlots.map(s => s.dayOfWeek)).size || 6;
   const maxPeriodsPerDay = Math.max(...timeSlots.map(s => s.periodIndex), 0) + 1;
 
   return {
@@ -2092,6 +2092,61 @@ apiRouter.post('/admin/reset-database', async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: err.message || 'Failed to reset database' });
   }
 });
+
+// ----------------------------------------------------
+// 13.1 MIGRATE: ADD SATURDAY TIME SLOTS TO EXISTING DB
+// ----------------------------------------------------
+apiRouter.post('/admin/migrate-add-saturday', async (req: Request, res: Response) => {
+  try {
+    const periodTemplates = [
+      { index: 0, start: '09:00', end: '10:00', isBreak: 0, label: 'Period 1' },
+      { index: 1, start: '10:00', end: '11:00', isBreak: 0, label: 'Period 2' },
+      { index: 2, start: '11:15', end: '12:15', isBreak: 0, label: 'Period 3' },
+      { index: 3, start: '12:15', end: '13:15', isBreak: 0, label: 'Period 4' },
+      { index: 4, start: '13:15', end: '14:00', isBreak: 1, label: 'Lunch Break' },
+      { index: 5, start: '14:00', end: '15:00', isBreak: 0, label: 'Period 5' },
+      { index: 6, start: '15:00', end: '16:00', isBreak: 0, label: 'Period 6' },
+      { index: 7, start: '16:00', end: '17:00', isBreak: 0, label: 'Period 7' }
+    ];
+
+    let added = 0;
+    const insertSlot = db.prepare(`
+      INSERT INTO time_slots (id, day_of_week, day_name, period_index, start_time, end_time, is_break, label)
+      VALUES (?, 5, 'Saturday', ?, ?, ?, ?, ?)
+      ON CONFLICT (id) DO NOTHING
+    `);
+
+    runInTransaction(() => {
+      for (const p of periodTemplates) {
+        const result = insertSlot.run(
+          `slot-5-${p.index}`, p.index, p.start, p.end, p.isBreak, p.label
+        );
+        added += Number(result.changes);
+      }
+    });
+
+    // Mirror to Postgres if configured
+    if (isPostgresConfigured) {
+      for (const p of periodTemplates) {
+        await writeThroughPg(`
+          INSERT INTO time_slots (id, day_of_week, day_name, period_index, start_time, end_time, is_break, label)
+          VALUES (?, 5, 'Saturday', ?, ?, ?, ?, ?)
+          ON CONFLICT (id) DO NOTHING
+        `, [`slot-5-${p.index}`, p.index, p.start, p.end, p.isBreak, p.label]);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Saturday time slots migration complete. ${added} new slots added.`,
+      slotsAdded: added
+    });
+  } catch (err: any) {
+    console.error('Saturday migration failed:', err);
+    res.status(500).json({ success: false, error: err.message || 'Failed to add Saturday slots' });
+  }
+});
+
 
 // ----------------------------------------------------
 // 14. AI NATURAL LANGUAGE TIMETABLE ASSISTANT
