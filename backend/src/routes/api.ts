@@ -1593,9 +1593,12 @@ apiRouter.post('/timetables/upload-extract', async (req: Request, res: Response)
 
     let rowsToProcess: any[] = [];
 
+    // Primary path: client already parsed the file into structured rows.
+    // We store the extracted schedule data, not the raw file/document.
     if (rawRows && Array.isArray(rawRows) && rawRows.length > 0) {
       rowsToProcess = rawRows;
-    } else if (fileBase64) {
+    } else if (fileBase64 && fileBase64.length > 0) {
+      // Fallback: decode and parse base64 file if rawRows not provided (direct API use)
       const buffer = Buffer.from(fileBase64, 'base64');
       if (fileName.endsWith('.json')) {
         const text = buffer.toString('utf-8');
@@ -1608,12 +1611,13 @@ apiRouter.post('/timetables/upload-extract', async (req: Request, res: Response)
         rowsToProcess = xlsx.utils.sheet_to_json(worksheet, { defval: '' });
       }
     } else {
-      return res.status(400).json({ success: false, error: 'No file content or rows provided for timetable extraction' });
+      return res.status(400).json({ success: false, error: 'No timetable data provided. Upload an Excel/CSV file with schedule information.' });
     }
 
     if (!rowsToProcess || rowsToProcess.length === 0) {
       return res.status(400).json({ success: false, error: 'The uploaded file contains no data rows.' });
     }
+
 
     // Extract sessions with intelligent fuzzy header recognition
     const parsedSessions: ParsedSessionRow[] = [];

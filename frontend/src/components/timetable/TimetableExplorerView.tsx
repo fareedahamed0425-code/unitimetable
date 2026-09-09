@@ -90,7 +90,7 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
   // Upload Timetable state
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [uploadFileName, setUploadFileName] = useState('');
-  const [uploadFileBase64, setUploadFileBase64] = useState('');
+  const [uploadFileBase64, _setUploadFileBase64] = useState(''); // kept for API compat, no longer used
   const [uploadParsedRows, setUploadParsedRows] = useState<any[]>([]);
   const [uploadPreviewSessions, setUploadPreviewSessions] = useState<any[]>([]);
   const [uploadSummary, setUploadSummary] = useState<{
@@ -472,32 +472,24 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
         const buffer = e.target?.result;
         if (!buffer) return;
 
+        // Parse file into structured rows only — we store schedule data, not the file itself
         let rows: any[] = [];
-        let base64Str = '';
 
         if (typeof buffer === 'string') {
-          base64Str = btoa(unescape(encodeURIComponent(buffer)));
           if (file.name.endsWith('.json')) {
             const parsed = JSON.parse(buffer);
             rows = Array.isArray(parsed) ? parsed : (parsed.sessions || parsed.entries || [parsed]);
           } else {
+            // CSV / text format
             const wb = xlsx.read(buffer, { type: 'string' });
             rows = xlsx.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
           }
         } else {
+          // Excel binary formats (.xlsx, .xls)
           const arrayBuffer = buffer as ArrayBuffer;
-          const bytes = new Uint8Array(arrayBuffer);
-          let binary = '';
-          for (let i = 0; i < bytes.byteLength; i++) {
-            binary += String.fromCharCode(bytes[i]);
-          }
-          base64Str = btoa(binary);
-
           const wb = xlsx.read(arrayBuffer, { type: 'array' });
           rows = xlsx.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
         }
-
-        setUploadFileBase64(base64Str);
         setUploadParsedRows(rows);
 
         // Calculate preview metrics
@@ -552,8 +544,9 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
     setUploadSuccessMsg('');
 
     try {
+      // Send only the parsed row data — no file/document storage
       const res = await api.uploadTimetableExtract({
-        fileBase64: uploadFileBase64,
+        fileBase64: '',
         fileName: uploadFileName,
         rawRows: uploadParsedRows,
         clearExisting: uploadClearExisting,
@@ -1806,10 +1799,10 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
                   <Upload className="w-4 h-4 text-[#2582A1]" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-[#002E4E]">Upload & Auto-Schedule Timetable</h3>
-                  <p className="text-xs text-[#4A6375]">
-                    Upload Excel (.xlsx/.xls), CSV, or JSON. The engine will extract sessions, resolve faculty & cohorts, and populate the grid.
-                  </p>
+                   <h3 className="text-base font-bold text-[#002E4E]">Upload Timetable — Read & Import Schedule Data</h3>
+                   <p className="text-xs text-[#4A6375]">
+                     Upload Excel (.xlsx/.xls), CSV, or JSON. The system <strong>reads and imports the schedule data</strong> into the timetable grid — the file itself is <em>not</em> stored.
+                   </p>
                 </div>
               </div>
               <button
@@ -1878,7 +1871,7 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
                       <span>{uploadFileName}</span>
                     </div>
                     <div className="text-[11px] text-[#4A6375] mt-0.5">
-                      {uploadParsedRows.length} total rows parsed from file
+                      {uploadParsedRows.length} rows read — schedule data ready to import
                     </div>
                   </div>
                 ) : (
@@ -1887,7 +1880,7 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
                       Click to choose timetable file or drag and drop here
                     </div>
                     <div className="text-[11px] text-[#4A6375] mt-0.5">
-                      Supports Excel (.xlsx, .xls), CSV, JSON, and FET XML formats
+                      Schedule data is extracted and stored in the database — not the file itself
                     </div>
                   </div>
                 )}
