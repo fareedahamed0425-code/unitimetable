@@ -1,29 +1,15 @@
 import React, { useState } from 'react';
 import {
-  LayoutDashboard,
-  Sparkles,
-  CalendarDays,
-  AlertTriangle,
-  Sliders,
-  Network,
-  Users,
-  GraduationCap,
-  BookOpen,
-  Layers,
-  Building,
-  Clock,
-  CheckSquare,
-  FileCode,
-  ShieldCheck,
-  History,
-  Activity,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Activity,
+  UserCheck
 } from 'lucide-react';
-
 import { User } from '../../../shared/types';
+import { ROLE_CONFIGS } from '../config/roleProfiles';
 
 export type NavSection =
+  | 'role-profile'
   | 'dashboard'
   | 'wizard'
   | 'timetable'
@@ -48,20 +34,6 @@ interface SidebarProps {
   currentUser: User | null;
 }
 
-interface NavItem {
-  id: string;
-  label: string;
-  icon: React.ElementType;
-  badge?: string;
-  count?: number;
-}
-
-interface NavGroup {
-  title: string;
-  restricted?: boolean;
-  items: NavItem[];
-}
-
 export const Sidebar: React.FC<SidebarProps> = ({
   currentSection,
   onSelectSection,
@@ -70,52 +42,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  const isRestricted = currentUser?.role === 'STUDENT' || currentUser?.role === 'FACULTY';
+  const role = currentUser?.role || 'TIMETABLE_COORDINATOR';
+  const roleConfig = ROLE_CONFIGS[role] || ROLE_CONFIGS.TIMETABLE_COORDINATOR;
 
-  const allNavGroups: NavGroup[] = [
-    {
-      title: 'SCHEDULE',
-      items: [
-        { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
-        ...(isRestricted ? [] : [{ id: 'wizard', label: 'Smart Wizard', icon: Sparkles, badge: 'AI' }]),
-        { id: 'timetable', label: 'Timetable Grid', icon: CalendarDays },
-        ...(isRestricted ? [] : [{ id: 'conflicts', label: 'Conflict Center', icon: AlertTriangle, count: conflictsCount }])
-      ]
-    },
-    {
-      title: 'OPTIMIZATION',
-      restricted: true,
-      items: [
-        { id: 'preferences', label: 'Smart Preferences', icon: Sliders },
-        { id: 'availability', label: 'Availability Matrix', icon: CheckSquare }
-      ]
-    },
-    {
-      title: 'ACADEMIC STRUCTURE',
-      restricted: true,
-      items: [
-        { id: 'hierarchy', label: 'University Hierarchy', icon: Network },
-        { id: 'faculty', label: 'Faculty & Teachers', icon: Users },
-        { id: 'students', label: 'Student Cohorts', icon: GraduationCap },
-        { id: 'courses', label: 'Courses & Curriculum', icon: BookOpen },
-        { id: 'activities', label: 'Activities & Labs', icon: Layers },
-        { id: 'infrastructure', label: 'Venues & Rooms', icon: Building },
-        { id: 'calendar', label: 'Periods & Slots', icon: Clock }
-      ]
-    },
-    {
-      title: 'INTEROPERABILITY',
-      restricted: true,
-      items: [
-        { id: 'fet', label: 'FET XML Hub', icon: FileCode },
-        { id: 'publishing', label: 'Publishing & Versions', icon: ShieldCheck },
-        { id: 'audit', label: 'Audit Trail', icon: History }
-      ]
-    }
-  ];
-
-  // Filter out restricted groups for students and faculty
-  const navGroups = allNavGroups.filter(group => !(isRestricted && group.restricted));
+  const navGroups = roleConfig.navGroups;
 
   return (
     <aside
@@ -123,12 +53,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         isCollapsed ? 'w-16 min-w-[4rem]' : 'w-60 min-w-[15rem]'
       }`}
     >
-      {/* Top Header with Collapse / Expand Toggle */}
+      {/* Top Header with Collapse / Expand Toggle & Role Pill */}
       <div className="p-3 border-b border-[#E8E7E3] flex items-center justify-between">
         {!isCollapsed && (
-          <span className="text-[10px] font-bold uppercase tracking-widest text-[#8B8E99] pl-1">
-            Navigation
-          </span>
+          <div className="flex items-center gap-1.5 pl-1">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-[#8B8E99]">
+              {roleConfig.shortTitle}
+            </span>
+          </div>
         )}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
@@ -159,6 +91,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {group.items.map(item => {
                 const Icon = item.icon;
                 const isActive = currentSection === item.id;
+                const count = item.countKey === 'conflicts' ? conflictsCount : undefined;
+
                 return (
                   <button
                     key={item.id}
@@ -194,16 +128,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             {item.badge}
                           </span>
                         )}
-                        {typeof item.count === 'number' && item.count > 0 && (
+                        {typeof count === 'number' && count > 0 && (
                           <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-[#B91C1C] text-white">
-                            {item.count}
+                            {count}
                           </span>
                         )}
                       </div>
                     )}
 
                     {/* Badge indicator on collapsed mode */}
-                    {isCollapsed && typeof item.count === 'number' && item.count > 0 && (
+                    {isCollapsed && typeof count === 'number' && count > 0 && (
                       <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#B91C1C]" />
                     )}
                   </button>
@@ -214,19 +148,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ))}
       </div>
 
-      {/* Minimalist Bottom Status */}
+      {/* Role Profile Indicator at Bottom */}
       <div className="p-2.5 border-t border-[#E8E7E3] bg-[#FBFBFA]">
         <div
-          className={`flex items-center ${
+          onClick={() => onSelectSection('role-profile')}
+          className={`flex items-center cursor-pointer ${
             isCollapsed ? 'justify-center p-2' : 'justify-between p-2'
-          } rounded-lg bg-white border border-[#E8E7E3]`}
+          } rounded-lg bg-white border border-[#E8E7E3] hover:border-[#D1D0C9] transition-colors`}
         >
           <div className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#121316]"></div>
+            <div className={`w-2 h-2 rounded-full ${roleConfig.avatarBg}`}></div>
             {!isCollapsed && (
               <div>
-                <div className="text-[11px] font-semibold text-[#121316]">FET Core 6.0</div>
-                <div className="text-[9px] text-[#8B8E99]">Engine Active</div>
+                <div className="text-[11px] font-semibold text-[#121316] truncate max-w-[120px]">
+                  {roleConfig.title}
+                </div>
+                <div className="text-[9px] text-[#8B8E99]">Role Workspace</div>
               </div>
             )}
           </div>

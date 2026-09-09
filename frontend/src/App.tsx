@@ -10,8 +10,10 @@ import { AvailabilityMatrixView } from './components/availability/AvailabilityMa
 import { ResourceManagementView } from './components/resources/ResourceManagementView';
 import { FETInteroperabilityView } from './components/fet/FETInteroperabilityView';
 import { PublishingAndAuditView } from './components/governance/PublishingAndAuditView';
+import { RoleProfileRouter } from './components/roles/RoleProfileRouter';
 import { api } from './api';
 import { Room, Teacher, TimeSlot, Timetable, User } from '../../shared/types';
+import { ROLE_CONFIGS } from './config/roleProfiles';
 
 const TEST_USERS: User[] = [
   { id: 'user-super', name: 'Super Admin', email: 'admin@mist.edu', role: 'SUPER_ADMIN', createdAt: new Date().toISOString() },
@@ -23,7 +25,7 @@ const TEST_USERS: User[] = [
 ];
 
 export const App: React.FC = () => {
-  const [currentSection, setCurrentSection] = useState<NavSection>('dashboard');
+  const [currentSection, setCurrentSection] = useState<NavSection>('role-profile');
   const [isWizardOpen, setIsWizardOpen] = useState(false);
 
   // Core Data
@@ -54,9 +56,12 @@ export const App: React.FC = () => {
       const activeUsers = uList && uList.length > 0 ? uList : TEST_USERS;
       setUsers(activeUsers);
       
-      const coordinator = activeUsers.find(u => u.role === 'TIMETABLE_COORDINATOR') || activeUsers[0];
-      setCurrentUser(coordinator);
+      const defaultUser = activeUsers[3] || activeUsers[0]; // Timetable Coordinator or Super Admin
+      setCurrentUser(defaultUser);
       
+      const roleConfig = ROLE_CONFIGS[defaultUser.role] || ROLE_CONFIGS.TIMETABLE_COORDINATOR;
+      setCurrentSection((roleConfig.defaultSection as NavSection) || 'role-profile');
+
       setActiveTimetable(tt);
       setAnalytics(stats);
       setTeachers(tList || []);
@@ -66,6 +71,7 @@ export const App: React.FC = () => {
       console.error('Failed to load initial data:', err);
       setUsers(TEST_USERS);
       setCurrentUser(TEST_USERS[3]);
+      setCurrentSection('role-profile');
     }
   };
 
@@ -78,35 +84,39 @@ export const App: React.FC = () => {
     setAnalytics(stats);
   };
 
+  const handleSelectUser = (user: User) => {
+    setCurrentUser(user);
+    const roleConfig = ROLE_CONFIGS[user.role] || ROLE_CONFIGS.TIMETABLE_COORDINATOR;
+    setCurrentSection((roleConfig.defaultSection as NavSection) || 'role-profile');
+    setIsWizardOpen(false);
+  };
+
   const conflictsCount = activeTimetable?.conflicts?.length || 0;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
-      {/* Top Navbar */}
+      {/* Dynamic Role-Aware Navbar */}
       <Navbar
         currentUser={currentUser}
         allUsers={users}
-        onSelectUser={(u) => {
-          setCurrentUser(u);
-          if (u && (u.role === 'STUDENT' || u.role === 'FACULTY')) {
-            if (!['dashboard', 'timetable'].includes(currentSection)) {
-              setCurrentSection('dashboard');
-              setIsWizardOpen(false);
-            }
-          }
-        }}
+        onSelectUser={handleSelectUser}
         activeTimetable={activeTimetable}
+        analytics={analytics}
         onOpenWizard={() => {
           setIsWizardOpen(true);
           setCurrentSection('wizard');
         }}
+        onOpenPublishing={() => {
+          setCurrentSection('publishing');
+        }}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        onNavigate={(s) => setCurrentSection(s as NavSection)}
       />
 
       {/* Main Container */}
       <div className="flex-1 max-w-[1700px] w-full mx-auto px-6 pb-8 flex gap-6">
-        {/* Left Sidebar */}
+        {/* Left Dynamic Role Sidebar */}
         <Sidebar
           currentSection={currentSection}
           onSelectSection={s => {
@@ -120,6 +130,21 @@ export const App: React.FC = () => {
 
         {/* Center Content Workspace */}
         <main className="flex-1 overflow-y-auto">
+          {currentSection === 'role-profile' && (
+            <RoleProfileRouter
+              currentUser={currentUser}
+              activeTimetable={activeTimetable}
+              analytics={analytics}
+              teachers={teachers}
+              onOpenWizard={() => {
+                setIsWizardOpen(true);
+                setCurrentSection('wizard');
+              }}
+              onNavigate={setCurrentSection}
+              onOpenPublishing={() => setCurrentSection('publishing')}
+            />
+          )}
+
           {currentSection === 'dashboard' && (
             <DashboardView
               analytics={analytics}
