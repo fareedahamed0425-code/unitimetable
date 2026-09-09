@@ -1,4 +1,5 @@
 import { db, initializeDatabase, runInTransaction } from './database';
+import crypto from 'crypto';
 
 export function seedDatabase(force: boolean = false): void {
   initializeDatabase();
@@ -52,6 +53,14 @@ export function seedDatabase(force: boolean = false): void {
         DELETE FROM audit_logs;
       `);
     }
+
+    // 0. Seed Official Super Administrator
+    const dynamicHash = crypto.scryptSync('Admin@1234', 'apollo_salt_2026', 64).toString('hex');
+    const finalAdminHash = `scrypt$apollo_salt_2026$${dynamicHash}`;
+    db.prepare(`
+      INSERT INTO users (id, name, email, password_hash, role)
+      VALUES (?, ?, ?, ?, ?)
+    `).run('user-admin-main', 'Apollo Super Admin', 'admin@apollouniversity.edu.in', finalAdminHash, 'SUPER_ADMIN');
 
     // 1. University
     const univId = 'univ-1';

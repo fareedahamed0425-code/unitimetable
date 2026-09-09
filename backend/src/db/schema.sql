@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('SUPER_ADMIN', 'UNIVERSITY_ADMIN', 'DEPARTMENT_ADMIN', 'TIMETABLE_COORDINATOR', 'FACULTY', 'STUDENT')),
+    password_hash TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL CHECK (role IN ('SUPER_ADMIN', 'UNIVERSITY_ADMIN', 'DEPARTMENT_ADMIN', 'TIMETABLE_COORDINATOR', 'DEAN', 'HOD', 'FACULTY', 'STUDENT')),
     department_id TEXT,
     faculty_id TEXT,
     teacher_id TEXT,
@@ -393,8 +394,21 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Indexing for high-performance constraint matching
+-- 11. Persisted File Uploads
+CREATE TABLE IF NOT EXISTS uploaded_files (
+    id TEXT PRIMARY KEY,
+    file_name TEXT NOT NULL,
+    file_type TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    content_text TEXT NOT NULL,
+    uploaded_by TEXT NOT NULL,
+    uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexing for high-performance constraint matching & auth
 CREATE INDEX IF NOT EXISTS idx_activities_course ON activities(course_id);
 CREATE INDEX IF NOT EXISTS idx_rooms_building ON rooms(building_id);
 CREATE INDEX IF NOT EXISTS idx_timetable_entries_pos ON timetable_entries(timetable_id, day_of_week, period_index);
 CREATE INDEX IF NOT EXISTS idx_availability_lookup ON entity_availability(entity_type, entity_id, day_of_week, period_index);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+

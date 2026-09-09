@@ -1,4 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Calendar,
+  Sparkles,
+  AlertTriangle,
+  UserCheck,
+  Menu,
+  Home
+} from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { Sidebar, NavSection } from './components/Sidebar';
 import { DashboardView } from './components/dashboard/DashboardView';
@@ -11,26 +19,123 @@ import { ResourceManagementView } from './components/resources/ResourceManagemen
 import { FETInteroperabilityView } from './components/fet/FETInteroperabilityView';
 import { PublishingAndAuditView } from './components/governance/PublishingAndAuditView';
 import { RoleProfileRouter } from './components/roles/RoleProfileRouter';
+import { AuthPage } from './components/auth/AuthPage';
 import { api } from './api';
-import { Room, Teacher, TimeSlot, Timetable, User } from '../../shared/types';
+import { RoleType, Room, Teacher, TimeSlot, Timetable, User } from '../../shared/types';
 import { ROLE_CONFIGS } from './config/roleProfiles';
 
-const TEST_USERS: User[] = [
-  { id: 'user-super', name: 'Super Admin', email: 'admin@apollo.edu', role: 'SUPER_ADMIN', createdAt: new Date().toISOString() },
-  { id: 'user-univ-admin', name: 'Dean Academic Affairs', email: 'dean@apollo.edu', role: 'UNIVERSITY_ADMIN', createdAt: new Date().toISOString() },
-  { id: 'user-dept-admin', name: 'Dr. Alan Turing (HOD CSE)', email: 'hod.cse@apollo.edu', role: 'DEPARTMENT_ADMIN', createdAt: new Date().toISOString() },
-  { id: 'user-coordinator', name: 'Prof. Ada Lovelace (Timetable Coordinator)', email: 'coordinator@apollo.edu', role: 'TIMETABLE_COORDINATOR', createdAt: new Date().toISOString() },
-  { id: 'user-faculty', name: 'Dr. Grace Hopper', email: 'grace@apollo.edu', role: 'FACULTY', createdAt: new Date().toISOString() },
-  { id: 'user-student', name: 'Alex Johnson (Student CSE 3-A)', email: 'alex.j@student.apollo.edu', role: 'STUDENT', createdAt: new Date().toISOString() }
-];
+// Native Browser Router Hook for React 19 (Zero library conflicts)
+const useNativeRouter = () => {
+  const [pathname, setPathname] = useState(() => (typeof window !== 'undefined' ? window.location.pathname : '/'));
+
+  useEffect(() => {
+    const onLocationChange = () => {
+      setPathname(window.location.pathname);
+    };
+    window.addEventListener('popstate', onLocationChange);
+    return () => window.removeEventListener('popstate', onLocationChange);
+  }, []);
+
+  const navigate = useCallback((path: string, options?: { replace?: boolean }) => {
+    if (typeof window !== 'undefined') {
+      if (options?.replace) {
+        window.history.replaceState(null, '', path);
+      } else {
+        window.history.pushState(null, '', path);
+      }
+      setPathname(path);
+    }
+  }, []);
+
+  return { pathname, navigate };
+};
+
+export const ROLE_TO_SLUG: Record<RoleType, string> = {
+  SUPER_ADMIN: 'admin',
+  UNIVERSITY_ADMIN: 'dean',
+  DEPARTMENT_ADMIN: 'hod',
+  TIMETABLE_COORDINATOR: 'coordinator',
+  FACULTY: 'faculty',
+  STUDENT: 'student'
+};
+
+export const SLUG_TO_ROLE: Record<string, RoleType> = {
+  admin: 'SUPER_ADMIN',
+  'super-admin': 'SUPER_ADMIN',
+  dean: 'UNIVERSITY_ADMIN',
+  'univ-admin': 'UNIVERSITY_ADMIN',
+  hod: 'DEPARTMENT_ADMIN',
+  'dept-admin': 'DEPARTMENT_ADMIN',
+  coordinator: 'TIMETABLE_COORDINATOR',
+  faculty: 'FACULTY',
+  student: 'STUDENT'
+};
+
+export const SECTION_TO_SLUG: Record<NavSection, string> = {
+  'role-profile': 'profile',
+  dashboard: 'dashboard',
+  wizard: 'wizard',
+  timetable: 'timetable',
+  conflicts: 'conflicts',
+  preferences: 'preferences',
+  availability: 'availability',
+  hierarchy: 'hierarchy',
+  faculty: 'faculty',
+  students: 'students',
+  courses: 'courses',
+  activities: 'activities',
+  infrastructure: 'infrastructure',
+  calendar: 'calendar',
+  fet: 'fet',
+  publishing: 'publishing',
+  audit: 'audit'
+};
+
+export const SLUG_TO_SECTION: Record<string, NavSection> = {
+  profile: 'role-profile',
+  console: 'role-profile',
+  overview: 'role-profile',
+  'role-profile': 'role-profile',
+  dashboard: 'dashboard',
+  wizard: 'wizard',
+  timetable: 'timetable',
+  routine: 'timetable',
+  conflicts: 'conflicts',
+  preferences: 'preferences',
+  availability: 'availability',
+  workload: 'availability',
+  hierarchy: 'hierarchy',
+  faculty: 'faculty',
+  teachers: 'faculty',
+  students: 'students',
+  cohorts: 'students',
+  courses: 'courses',
+  activities: 'activities',
+  infrastructure: 'infrastructure',
+  venues: 'infrastructure',
+  calendar: 'calendar',
+  periods: 'calendar',
+  fet: 'fet',
+  publishing: 'publishing',
+  versions: 'publishing',
+  audit: 'audit',
+  logs: 'audit'
+};
 
 export const App: React.FC = () => {
+  const { pathname, navigate } = useNativeRouter();
+
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return Boolean(localStorage.getItem('apollo_auth_token') || localStorage.getItem('apollo_auth_user'));
+  });
+
   const [currentSection, setCurrentSection] = useState<NavSection>('role-profile');
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
 
   // Core Data
   const [users, setUsers] = useState<User[]>([]);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => api.getStoredUser());
   const [activeTimetable, setActiveTimetable] = useState<Timetable | null>(null);
   const [analytics, setAnalytics] = useState<any>(null);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -44,23 +149,29 @@ export const App: React.FC = () => {
 
   const loadInitialData = async () => {
     try {
-      const [uList, tt, stats, tList, infra, cal] = await Promise.all([
-        api.getUsers().catch(() => TEST_USERS),
+      const [uList, tt, stats, tList, infra, cal, me] = await Promise.all([
+        api.getUsers().catch(() => []),
         api.getActiveTimetable().catch(() => null),
         api.getAnalytics().catch(() => null),
         api.getTeachers().catch(() => []),
         api.getInfrastructure().catch(() => ({ buildings: [], rooms: [] })),
-        api.getCalendar().catch(() => [])
+        api.getCalendar().catch(() => []),
+        api.getMe().catch(() => null)
       ]);
 
-      const activeUsers = uList && uList.length > 0 ? uList : TEST_USERS;
+      const activeUsers = uList && uList.length > 0 ? uList : (me ? [me] : []);
       setUsers(activeUsers);
-      
-      const defaultUser = activeUsers[3] || activeUsers[0]; // Timetable Coordinator or Super Admin
-      setCurrentUser(defaultUser);
-      
-      const roleConfig = ROLE_CONFIGS[defaultUser.role] || ROLE_CONFIGS.TIMETABLE_COORDINATOR;
-      setCurrentSection((roleConfig.defaultSection as NavSection) || 'role-profile');
+
+      if (me) {
+        setCurrentUser(me);
+        setIsAuthenticated(true);
+      } else if (localStorage.getItem('apollo_auth_user')) {
+        const stored = api.getStoredUser();
+        if (stored) {
+          setCurrentUser(stored);
+          setIsAuthenticated(true);
+        }
+      }
 
       setActiveTimetable(tt);
       setAnalytics(stats);
@@ -69,10 +180,79 @@ export const App: React.FC = () => {
       setCalendar(cal || []);
     } catch (err) {
       console.error('Failed to load initial data:', err);
-      setUsers(TEST_USERS);
-      setCurrentUser(TEST_USERS[3]);
-      setCurrentSection('role-profile');
     }
+  };
+
+  const handleLoginSuccess = (user: User) => {
+    setCurrentUser(user);
+    setIsAuthenticated(true);
+    const roleSlug = ROLE_TO_SLUG[user.role] || 'admin';
+    const roleConfig = ROLE_CONFIGS[user.role] || ROLE_CONFIGS.SUPER_ADMIN;
+    const defaultSec = (roleConfig.defaultSection as NavSection) || 'role-profile';
+    setCurrentSection(defaultSec);
+    setIsWizardOpen(defaultSec === 'wizard');
+    navigate(`/${roleSlug}/${SECTION_TO_SLUG[defaultSec] || 'profile'}`);
+  };
+
+  const handleLogout = () => {
+    api.logout();
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    navigate('/');
+  };
+
+  // Sync state with URL path
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const path = pathname.replace(/^\/+|\/+$/g, '');
+    const parts = path.split('/').filter(Boolean);
+
+    if (parts.length === 0) {
+      const activeRole = currentUser?.role || 'SUPER_ADMIN';
+      const roleSlug = ROLE_TO_SLUG[activeRole] || 'admin';
+      navigate(`/${roleSlug}/profile`, { replace: true });
+      return;
+    }
+
+    const first = parts[0].toLowerCase();
+    const second = parts[1] ? parts[1].toLowerCase() : null;
+
+    if (SLUG_TO_ROLE[first]) {
+      const targetRole = SLUG_TO_ROLE[first];
+      const matchedUser = users.find(u => u.role === targetRole);
+      if (matchedUser && (!currentUser || currentUser.role !== matchedUser.role)) {
+        setCurrentUser(matchedUser);
+      }
+
+      if (second && SLUG_TO_SECTION[second]) {
+        const targetSection = SLUG_TO_SECTION[second];
+        setCurrentSection(targetSection);
+        setIsWizardOpen(targetSection === 'wizard');
+      } else {
+        const roleConfig = ROLE_CONFIGS[targetRole] || ROLE_CONFIGS.SUPER_ADMIN;
+        const defaultSec = (roleConfig.defaultSection as NavSection) || 'role-profile';
+        setCurrentSection(defaultSec);
+        setIsWizardOpen(defaultSec === 'wizard');
+      }
+    } else if (SLUG_TO_SECTION[first]) {
+      const targetSection = SLUG_TO_SECTION[first];
+      setCurrentSection(targetSection);
+      setIsWizardOpen(targetSection === 'wizard');
+      const activeRole = currentUser?.role || 'SUPER_ADMIN';
+      const roleSlug = ROLE_TO_SLUG[activeRole] || 'admin';
+      navigate(`/${roleSlug}/${SECTION_TO_SLUG[targetSection] || targetSection}`, { replace: true });
+    }
+  }, [pathname, users, isAuthenticated]);
+
+  const handleNavigate = (section: NavSection, userOverride?: User | null) => {
+    const targetUser = userOverride || currentUser;
+    const roleSlug = targetUser ? ROLE_TO_SLUG[targetUser.role] || 'admin' : 'admin';
+    const sectionSlug = SECTION_TO_SLUG[section] || 'profile';
+    setCurrentSection(section);
+    setIsWizardOpen(section === 'wizard');
+    setIsMobileDrawerOpen(false);
+    navigate(`/${roleSlug}/${sectionSlug}`);
   };
 
   const handleRefreshData = async () => {
@@ -86,15 +266,19 @@ export const App: React.FC = () => {
 
   const handleSelectUser = (user: User) => {
     setCurrentUser(user);
-    const roleConfig = ROLE_CONFIGS[user.role] || ROLE_CONFIGS.TIMETABLE_COORDINATOR;
-    setCurrentSection((roleConfig.defaultSection as NavSection) || 'role-profile');
-    setIsWizardOpen(false);
+    const roleConfig = ROLE_CONFIGS[user.role] || ROLE_CONFIGS.SUPER_ADMIN;
+    const defaultSec = (roleConfig.defaultSection as NavSection) || 'role-profile';
+    handleNavigate(defaultSec, user);
   };
 
   const conflictsCount = activeTimetable?.conflicts?.length || 0;
 
+  if (!isAuthenticated) {
+    return <AuthPage onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col w-full overflow-x-hidden">
+    <div className="min-h-screen bg-[#F4F8FA] text-[#002E4E] flex flex-col w-full overflow-x-hidden">
       {/* Dynamic Streamlined Navbar */}
       <Navbar
         currentUser={currentUser}
@@ -103,32 +287,31 @@ export const App: React.FC = () => {
         activeTimetable={activeTimetable}
         analytics={analytics}
         onOpenWizard={() => {
-          setIsWizardOpen(true);
-          setCurrentSection('wizard');
+          handleNavigate('wizard');
         }}
         onOpenPublishing={() => {
-          setCurrentSection('publishing');
+          handleNavigate('publishing');
         }}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        onNavigate={(s) => setCurrentSection(s as NavSection)}
+        onNavigate={(s) => handleNavigate(s as NavSection)}
+        onToggleMobileMenu={() => setIsMobileDrawerOpen(true)}
+        onLogout={handleLogout}
       />
 
       {/* Main Container with min-w-0 to prevent horizontal scroll */}
-      <div className="flex-1 w-full max-w-[1700px] mx-auto px-4 md:px-6 pb-8 flex gap-5 overflow-x-hidden">
-        {/* Left Dynamic Role Sidebar */}
+      <div className="flex-1 w-full max-w-[1700px] mx-auto px-3 sm:px-4 md:px-6 pb-20 lg:pb-8 flex gap-4 md:gap-5 overflow-x-hidden">
+        {/* Left Dynamic Role Sidebar (Desktop Sticky + Mobile Drawer) */}
         <Sidebar
           currentSection={currentSection}
-          onSelectSection={s => {
-            setCurrentSection(s);
-            if (s === 'wizard') setIsWizardOpen(true);
-            else setIsWizardOpen(false);
-          }}
+          onSelectSection={(s) => handleNavigate(s)}
           conflictsCount={conflictsCount}
           currentUser={currentUser}
+          isOpenMobile={isMobileDrawerOpen}
+          onCloseMobile={() => setIsMobileDrawerOpen(false)}
         />
 
-        {/* Center Content Workspace with min-w-0 to constrain wide tables/grids */}
+        {/* Center Content Workspace */}
         <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
           {currentSection === 'role-profile' && (
             <RoleProfileRouter
@@ -137,35 +320,35 @@ export const App: React.FC = () => {
               analytics={analytics}
               teachers={teachers}
               onOpenWizard={() => {
-                setIsWizardOpen(true);
-                setCurrentSection('wizard');
+                handleNavigate('wizard');
               }}
-              onNavigate={(s) => setCurrentSection(s as NavSection)}
-              onOpenPublishing={() => setCurrentSection('publishing')}
+              onOpenPublishing={() => {
+                handleNavigate('publishing');
+              }}
+              onNavigate={(s) => handleNavigate(s as NavSection)}
             />
           )}
 
           {currentSection === 'dashboard' && (
             <DashboardView
-              analytics={analytics}
               activeTimetable={activeTimetable}
+              analytics={analytics}
+              onNavigate={(s) => handleNavigate(s as NavSection)}
               onOpenWizard={() => {
-                setIsWizardOpen(true);
-                setCurrentSection('wizard');
+                handleNavigate('wizard');
               }}
-              onNavigate={(s) => setCurrentSection(s as NavSection)}
             />
           )}
 
           {currentSection === 'wizard' && (
             <SmartWizardView
-              onFinish={() => {
-                handleRefreshData();
-                setCurrentSection('timetable');
+              isOpen={true}
+              onClose={() => {
+                handleNavigate('role-profile');
               }}
-              onNavigateToTimetable={() => {
+              onSuccess={() => {
                 handleRefreshData();
-                setCurrentSection('timetable');
+                handleNavigate('timetable');
               }}
             />
           )}
@@ -182,8 +365,9 @@ export const App: React.FC = () => {
 
           {currentSection === 'conflicts' && (
             <ConflictInspectorView
-              conflicts={activeTimetable?.conflicts || []}
-              onNavigateToGrid={() => setCurrentSection('timetable')}
+              timetable={activeTimetable}
+              onNavigateToGrid={() => handleNavigate('timetable')}
+              onRefresh={handleRefreshData}
             />
           )}
 
@@ -217,6 +401,62 @@ export const App: React.FC = () => {
           )}
         </main>
       </div>
+
+      {/* Mobile Bottom Navigation Bar (Visible on screens < lg) */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#D8E6ED] px-2 py-1.5 flex items-center justify-around shadow-lg">
+        <button
+          onClick={() => handleNavigate('role-profile')}
+          className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl text-[10px] font-semibold transition-colors ${
+            currentSection === 'role-profile' ? 'text-[#2582A1] bg-[#E8F4F8]' : 'text-[#4A6375] hover:text-[#002E4E]'
+          }`}
+        >
+          <UserCheck className="w-5 h-5" />
+          <span>Profile</span>
+        </button>
+        
+        <button
+          onClick={() => handleNavigate('timetable')}
+          className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl text-[10px] font-semibold transition-colors ${
+            currentSection === 'timetable' ? 'text-[#2582A1] bg-[#E8F4F8]' : 'text-[#4A6375] hover:text-[#002E4E]'
+          }`}
+        >
+          <Calendar className="w-5 h-5" />
+          <span>Routine</span>
+        </button>
+
+        <button
+          onClick={() => {
+            handleNavigate('wizard');
+          }}
+          className="flex flex-col items-center justify-center p-2 rounded-xl text-[10px] font-bold text-[#002E4E] bg-[#FDB931] hover:bg-[#EAA319] shadow-xs active:scale-95 transition-all -mt-3 border-2 border-white"
+        >
+          <Sparkles className="w-5 h-5 text-[#002E4E]" />
+          <span>Wizard</span>
+        </button>
+
+        <button
+          onClick={() => handleNavigate('conflicts')}
+          className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl text-[10px] font-semibold relative transition-colors ${
+            currentSection === 'conflicts' ? 'text-[#2582A1] bg-[#E8F4F8]' : 'text-[#4A6375] hover:text-[#002E4E]'
+          }`}
+        >
+          <AlertTriangle className="w-5 h-5" />
+          <span>Conflicts</span>
+          {conflictsCount > 0 && (
+            <span className="absolute top-0.5 right-2 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center">
+              {conflictsCount}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setIsMobileDrawerOpen(true)}
+          className="flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl text-[10px] font-semibold text-[#4A6375] hover:text-[#002E4E]"
+        >
+          <Menu className="w-5 h-5" />
+          <span>Menu</span>
+        </button>
+      </nav>
     </div>
   );
 };

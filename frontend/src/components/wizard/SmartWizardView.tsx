@@ -21,14 +21,34 @@ import { api } from '../../api';
 import { GenerationJob, SmartPreferenceRule } from '../../../../shared/types';
 
 interface SmartWizardProps {
-  onFinish: () => void;
-  onNavigateToTimetable: () => void;
+  onFinish?: () => void;
+  onNavigateToTimetable?: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
+  onSuccess?: () => void;
 }
 
 export const SmartWizardView: React.FC<SmartWizardProps> = ({
   onFinish,
-  onNavigateToTimetable
+  onNavigateToTimetable,
+  onClose,
+  onSuccess
 }) => {
+  const handleComplete = () => {
+    if (onSuccess) onSuccess();
+    else if (onFinish) onFinish();
+  };
+
+  const handleGoToTimetable = () => {
+    if (onNavigateToTimetable) onNavigateToTimetable();
+    else if (onSuccess) onSuccess();
+    else if (onFinish) onFinish();
+  };
+
+  const handleDismiss = () => {
+    if (onClose) onClose();
+    else if (onFinish) onFinish();
+  };
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [selectedTerm, setSelectedTerm] = useState('ay-2026-2027');
   const [selectedDept, setSelectedDept] = useState('dept-cse');
@@ -628,27 +648,27 @@ export const SmartWizardView: React.FC<SmartWizardProps> = ({
             </div>
           </div>
 
-          <div className="flex justify-between pt-4 border-t border-[#E8E7E3]">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-[#E8E7E3]">
             <button
               onClick={() => setCurrentStep(3)}
-              className="lux-btn text-xs py-2 px-4 flex items-center gap-1.5"
+              className="lux-btn text-xs py-2 px-4 flex items-center justify-center gap-1.5"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Regenerate</span>
             </button>
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
               <button
-                onClick={onNavigateToTimetable}
-                className="lux-btn text-xs py-2 px-4"
+                onClick={handleGoToTimetable}
+                className="lux-btn text-xs py-2 px-4 justify-center"
               >
                 <span>Inspect in Grid</span>
               </button>
               <button
                 onClick={async () => {
                   await api.setTimetableStatus('PUBLISHED');
-                  onFinish();
+                  handleComplete();
                 }}
-                className="lux-btn lux-btn-primary text-xs py-2 px-5 flex items-center gap-1.5"
+                className="lux-btn lux-btn-primary text-xs py-2 px-5 flex items-center justify-center gap-1.5"
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
                 <span>Publish Schedule</span>

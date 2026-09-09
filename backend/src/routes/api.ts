@@ -1,5 +1,5 @@
 import { Request, Response, Router } from 'express';
-import { db, runInTransaction } from '../db/database';
+import { db, runInTransaction, writeThroughPg, pgQuery, pgExecute } from '../db/database';
 import { ConflictEngine } from '../engine/conflictEngine';
 import { CSPSolver } from '../engine/cspSolver';
 import { ExplainEngine } from '../engine/explainEngine';
@@ -10,6 +10,7 @@ import { ActivityAssignment, TimetableProblemContext } from '../engine/types';
 import { FETExporter } from '../fet/fetExporter';
 import { FETParser } from '../fet/fetParser';
 import { NLPPreferenceParser } from '../nlp/nlpPreferenceParser';
+import { hashPassword, verifyPassword, generateAuthToken } from '../utils/auth';
 
 import {
   Activity,
@@ -33,6 +34,7 @@ import {
   TimetableConflict,
   TimetableEntry,
   TimetableVersion,
+  RoleType,
   User
 } from '../../../shared/types';
 
@@ -211,11 +213,239 @@ function buildProblemContext(profileId?: string): TimetableProblemContext {
 }
 
 // ----------------------------------------------------
-// 1. AUTH & USERS (RBAC)
+// 1. AUTH & USERS (RBAC & Neon Database Authentication)
 // ----------------------------------------------------
-apiRouter.get('/auth/users', (req: Request, res: Response) => {
-  const users = db.prepare('SELECT * FROM users ORDER BY name ASC').all() as User[];
+apiRouter.get('/auth/users', async (req: Request, res: Response) => {
+  try {
+    const pgUsers = await pgQuery<any>('SELECT id, name, email, role, department_id, created_at FROM users ORDER BY name ASC');
+    if (pgUsers && pgUsers.length > 0) {
+      return res.json({ success: true, data: pgUsers });
+    }
+  } catch (err) {
+    // fallback to sqlite
+  }
+  const users = db.prepare('SELECT id, name, email, role, department_id, faculty_id, teacher_id, student_id, created_at FROM users ORDER BY name ASC').all() as User[];
   res.json({ success: true, data: users });
+});
+
+apiRouter.post('/auth/login', async (req: Request, res: Response) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ success: false, error: 'Email and password are required' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  let user: any = null;
+
+  try {
+    const pgUsers = await pgQuery<any>('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [cleanEmail]);
+    if (pgUsers && pgUsers.length > 0) {
+      user = pgUsers[0];
+    }
+  } catch (err) {
+    console.error('Postgres login query fallback:', err);
+  }
+
+  if (!user) {
+    user = db.prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?)').get(cleanEmail) as any;
+  }
+
+  if (!user) {
+    return res.status(401).json({ success: false, error: 'Invalid email or password' });
+  }
+
+  // Verify password using scrypt hashing
+  const isMatch = verifyPassword(password, user.password_hash);
+  if (!isMatch) {
+    return res.status(401).json({ success: false, error: 'Invalid email or password' });
+  }
+
+  // Create session token
+  const token = generateAuthToken(user.id);
+  
+  // Record login in audit log
+  const logId = `log-${Date.now()}`;
+  const logSql = 'INSERT INTO audit_logs (id, user_id, user_name, action, entity_type, entity_id, after_value) VALUES (?, ?, ?, ?, ?, ?, ?)';
+  try {
+    db.prepare(logSql).run(logId, user.id, user.name, 'USER_LOGIN', 'USER', user.id, `User logged in with role ${user.role}`);
+    writeThroughPg(logSql, [logId, user.id, user.name, 'USER_LOGIN', 'USER', user.id, `User logged in with role ${user.role}`]);
+  } catch (e) {
+    // Non-fatal logging
+  }
+
+  const { password_hash, ...userProfile } = user;
+  res.json({
+    success: true,
+    data: {
+      user: userProfile,
+      token,
+      message: `Successfully authenticated as ${user.role}`
+    }
+  });
+});
+
+apiRouter.post('/auth/register', async (req: Request, res: Response) => {
+  const { name, email, password, confirmPassword, role = 'FACULTY', departmentId, teacherId, studentId } = req.body;
+  if (!name || !email || !password) {
+    return res.status(400).json({ success: false, error: 'Name, email, and password are required' });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
+  }
+  if (confirmPassword && password !== confirmPassword) {
+    return res.status(400).json({ success: false, error: 'Passwords do not match' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    const pgExisting = await pgQuery<any>('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [cleanEmail]);
+    if (pgExisting && pgExisting.length > 0) {
+      return res.status(409).json({ success: false, error: 'User with this email already exists' });
+    }
+  } catch (err) {
+    // proceed
+  }
+
+  const existing = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(cleanEmail);
+  if (existing) {
+    return res.status(409).json({ success: false, error: 'User with this email already exists' });
+  }
+
+  const userId = `user-${Date.now()}`;
+  const pHash = hashPassword(password);
+  const cleanRole = (role || 'STUDENT').toUpperCase();
+
+  const insertSql = 'INSERT INTO users (id, name, email, password_hash, role, department_id, teacher_id, student_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+  const params = [userId, name.trim(), cleanEmail, pHash, cleanRole, departmentId || null, teacherId || null, studentId || null];
+
+  db.prepare(insertSql).run(...params);
+  writeThroughPg(insertSql, params);
+
+  const token = generateAuthToken(userId);
+
+  res.status(201).json({
+    success: true,
+    data: {
+      user: {
+        id: userId,
+        name: name.trim(),
+        email: cleanEmail,
+        role: cleanRole,
+        departmentId
+      },
+      token,
+      message: 'Account created successfully'
+    }
+  });
+});
+
+apiRouter.get('/users', async (req: Request, res: Response) => {
+  try {
+    let rawUsers: any[] = [];
+    try {
+      rawUsers = await pgQuery<any>('SELECT id, name, email, role, department_id, teacher_id, student_id, created_at FROM users ORDER BY name ASC');
+    } catch (e) {}
+
+    if (!rawUsers || rawUsers.length === 0) {
+      rawUsers = db.prepare('SELECT id, name, email, role, department_id, teacher_id, student_id, created_at FROM users ORDER BY name ASC').all() as any[];
+    }
+
+    const users: User[] = rawUsers.map(u => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      departmentId: u.department_id || undefined,
+      teacherId: u.teacher_id || undefined,
+      studentId: u.student_id || undefined,
+      createdAt: u.created_at || new Date().toISOString()
+    }));
+
+    return res.json({ success: true, data: users });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+apiRouter.get('/auth/me', async (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ success: false, error: 'No authorization header provided' });
+  }
+
+  try {
+    const token = authHeader.replace('Bearer ', '').trim();
+    let userId: string | null = null;
+
+    if (token.startsWith('apu_')) {
+      const parts = token.split('_');
+      if (parts.length >= 2) {
+        userId = parts[1];
+      }
+    } else {
+      try {
+        const decoded = Buffer.from(token, 'base64').toString('utf-8');
+        userId = decoded.split(':')[0];
+      } catch {}
+    }
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Invalid token structure' });
+    }
+
+    let user: any = null;
+    try {
+      const pgUsers = await pgQuery<any>('SELECT id, name, email, role, department_id, faculty_id, teacher_id, student_id FROM users WHERE id = $1', [userId]);
+      if (pgUsers && pgUsers.length > 0) {
+        user = pgUsers[0];
+      }
+    } catch (e) {}
+
+    if (!user) {
+      user = db.prepare('SELECT id, name, email, role, department_id, faculty_id, teacher_id, student_id FROM users WHERE id = ?').get(userId);
+    }
+
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Session expired or user not found' });
+    }
+    res.json({ success: true, data: user });
+  } catch (err: any) {
+    res.status(401).json({ success: false, error: 'Invalid token: ' + err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 1.1 FILE UPLOAD & POSTGRESQL PERSISTENCE
+// ----------------------------------------------------
+apiRouter.post('/upload/file', async (req: Request, res: Response) => {
+  const { fileName = 'dataset.txt', fileType = 'text/plain', content = '', uploadedBy = 'System User' } = req.body;
+  
+  if (!content) {
+    return res.status(400).json({ success: false, error: 'File content is empty' });
+  }
+
+  const fileId = `file-${Date.now()}`;
+  const fileSize = Buffer.byteLength(content, 'utf8');
+
+  const insertSql = 'INSERT INTO uploaded_files (id, file_name, file_type, file_size, content_text, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)';
+  const params = [fileId, fileName, fileType, fileSize, content, uploadedBy];
+
+  db.prepare(insertSql).run(...params);
+  writeThroughPg(insertSql, params);
+
+  res.json({
+    success: true,
+    data: {
+      id: fileId,
+      fileName,
+      fileType,
+      fileSize,
+      uploadedBy,
+      uploadedAt: new Date().toISOString(),
+      message: 'File successfully saved to Neon PostgreSQL database.'
+    }
+  });
 });
 
 // ----------------------------------------------------
@@ -1106,3 +1336,6 @@ apiRouter.get('/audit-logs', (req: Request, res: Response) => {
   const logs = db.prepare('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 50').all();
   res.json({ success: true, data: logs });
 });
+
+
+

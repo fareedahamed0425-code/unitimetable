@@ -100,32 +100,36 @@ export const AvailabilityMatrixView: React.FC = () => {
     DISCOURAGED: 'bg-[#FFFBEB] hover:bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]'
   };
 
+  const [selectedDayTab, setSelectedDayTab] = useState<number | 'ALL'>('ALL');
+
+  const visibleDays = selectedDayTab === 'ALL' ? days : days.filter(d => d.id === selectedDayTab);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-full">
       {/* Header */}
-      <div className="lux-card p-6 bg-white border-[#E8E7E3]">
+      <div className="lux-card p-4 sm:p-6 bg-white border-[#E8E7E3]">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <span className="text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-[#F4F4F1] text-[#575A65] border border-[#E8E7E3]">
               Constraint Boundaries
             </span>
-            <h1 className="text-2xl font-bold text-[#121316] tracking-tight">Availability Matrix Studio</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-[#121316] tracking-tight">Availability Matrix Studio</h1>
             <p className="text-xs text-[#575A65]">
               Configure available, unavailable (hard blocked), and preferred time windows for teachers, rooms, and student sections.
             </p>
           </div>
-          <div className="w-9 h-9 rounded-lg bg-[#F4F4F1] text-[#121316] flex items-center justify-center">
+          <div className="w-9 h-9 rounded-lg bg-[#F4F4F1] text-[#121316] flex items-center justify-center flex-shrink-0">
             <CheckSquare className="w-4 h-4" />
           </div>
         </div>
       </div>
 
       {/* Real-time Target Selector Bar */}
-      <div className="lux-card p-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="relative">
+      <div className="lux-card p-3 sm:p-4 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-between gap-3 bg-white border-[#D8E6ED]">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
+          <div className="relative w-full sm:w-auto">
             <select
-              className="lux-select text-xs py-1.5 pl-3 pr-8 font-semibold text-[#121316] appearance-none cursor-pointer"
+              className="lux-select text-xs py-2 pl-3 pr-8 font-semibold text-[#002E4E] appearance-none cursor-pointer w-full bg-[#F4F8FA] border-[#D8E6ED]"
               value={entityType}
               onChange={e => {
                 const type = e.target.value as any;
@@ -139,13 +143,13 @@ export const AvailabilityMatrixView: React.FC = () => {
               <option value="ROOM">Room / Laboratory Maintenance</option>
               <option value="STUDENT_SECTION">Student Section Availability</option>
             </select>
-            <ChevronDown className="w-3 h-3 text-[#8B8E99] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown className="w-3.5 h-3.5 text-[#2582A1] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
 
           {entityType === 'TEACHER' && (
-            <div className="relative">
+            <div className="relative w-full sm:w-auto">
               <select
-                className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer"
+                className="lux-select text-xs py-2 pl-3 pr-8 font-medium appearance-none cursor-pointer w-full bg-[#F4F8FA] border-[#D8E6ED] text-[#002E4E]"
                 value={selectedEntityId}
                 onChange={e => setSelectedEntityId(e.target.value)}
               >
@@ -155,14 +159,14 @@ export const AvailabilityMatrixView: React.FC = () => {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="w-3 h-3 text-[#8B8E99] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-3.5 h-3.5 text-[#2582A1] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           )}
 
           {entityType === 'ROOM' && (
-            <div className="relative">
+            <div className="relative w-full sm:w-auto">
               <select
-                className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer"
+                className="lux-select text-xs py-2 pl-3 pr-8 font-medium appearance-none cursor-pointer w-full bg-[#F4F8FA] border-[#D8E6ED] text-[#002E4E]"
                 value={selectedEntityId}
                 onChange={e => setSelectedEntityId(e.target.value)}
               >
@@ -172,14 +176,14 @@ export const AvailabilityMatrixView: React.FC = () => {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="w-3 h-3 text-[#8B8E99] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-3.5 h-3.5 text-[#2582A1] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           )}
 
           {entityType === 'STUDENT_SECTION' && (
-            <div className="relative">
+            <div className="relative w-full sm:w-auto">
               <select
-                className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer"
+                className="lux-select text-xs py-2 pl-3 pr-8 font-medium appearance-none cursor-pointer w-full bg-[#F4F8FA] border-[#D8E6ED] text-[#002E4E]"
                 value={selectedEntityId}
                 onChange={e => setSelectedEntityId(e.target.value)}
               >
@@ -189,13 +193,13 @@ export const AvailabilityMatrixView: React.FC = () => {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="w-3 h-3 text-[#8B8E99] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-3.5 h-3.5 text-[#2582A1] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           )}
         </div>
 
         {/* Legend */}
-        <div className="flex items-center gap-2 text-[10px] font-semibold">
+        <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold pt-2 sm:pt-0 border-t sm:border-t-0 border-[#D8E6ED]">
           <span className="px-2 py-0.5 rounded bg-white border border-[#E8E7E3] text-[#575A65]">Neutral</span>
           <span className="px-2 py-0.5 rounded bg-[#FEF2F2] text-[#B91C1C] border border-[#FCA5A5]">Unavailable</span>
           <span className="px-2 py-0.5 rounded bg-[#F4F4F1] text-[#121316] border border-[#D3D1CB]">Preferred</span>
@@ -203,20 +207,47 @@ export const AvailabilityMatrixView: React.FC = () => {
         </div>
       </div>
 
+      {/* Mobile Day Selector Tabs */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mb-2 no-scrollbar">
+        <button
+          onClick={() => setSelectedDayTab('ALL')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+            selectedDayTab === 'ALL'
+              ? 'bg-[#002E4E] text-white shadow-xs'
+              : 'bg-white text-[#4A6375] hover:bg-[#E8F4F8] border border-[#D8E6ED]'
+          }`}
+        >
+          Full Week (5 Days)
+        </button>
+        {days.map(d => (
+          <button
+            key={d.id}
+            onClick={() => setSelectedDayTab(d.id)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+              selectedDayTab === d.id
+                ? 'bg-[#2582A1] text-white shadow-xs'
+                : 'bg-white text-[#4A6375] hover:bg-[#E8F4F8] border border-[#D8E6ED]'
+            }`}
+          >
+            {d.name}
+          </button>
+        ))}
+      </div>
+
       {/* Interactive Click-to-Cycle Availability Grid */}
-      <div className="lux-card p-5 overflow-hidden">
+      <div className="lux-card p-3 sm:p-5 overflow-hidden bg-white border-[#D8E6ED]">
         <div className="text-xs text-[#8B8E99] mb-3 italic">
-          💡 Click any time slot to cycle: Neutral → Unavailable (Hard) → Preferred → Strongly Preferred → Discouraged.
+          💡 Tap any time slot to cycle: Neutral → Unavailable (Hard) → Preferred → Strongly Preferred → Discouraged.
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse min-w-[720px]">
+        <div className="overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <table className="w-full border-collapse min-w-[500px] sm:min-w-[720px]">
             <thead>
               <tr className="bg-[#FAF9F7] border-b border-[#E8E7E3]">
-                <th className="p-3 text-left text-xs font-bold uppercase tracking-wider text-[#8B8E99] w-28 pl-4">
+                <th className="p-3 text-left text-xs font-bold uppercase tracking-wider text-[#8B8E99] w-24 sm:w-28 pl-4 sticky left-0 bg-[#FAF9F7] z-10">
                   Slot / Time
                 </th>
-                {days.map(d => (
+                {visibleDays.map(d => (
                   <th key={d.id} className="p-3 text-center text-xs font-bold text-[#121316]">
                     {d.name}
                   </th>
@@ -229,24 +260,24 @@ export const AvailabilityMatrixView: React.FC = () => {
 
                 return (
                   <tr key={pIdx}>
-                    <td className="p-2.5 text-xs font-medium text-[#575A65] bg-[#FAF9F7]/80 pl-4 border-r border-[#E8E7E3]">
+                    <td className="p-2.5 text-xs font-medium text-[#575A65] bg-[#FAF9F7] pl-4 border-r border-[#E8E7E3] sticky left-0 z-10">
                       <div className="font-bold text-[#121316]">Period {pIdx + 1}</div>
                       <div className="text-[10px] text-[#8B8E99] mt-0.5">{pSlot.startTime} - {pSlot.endTime}</div>
                     </td>
 
-                    {days.map(d => {
+                    {visibleDays.map(d => {
                       const state = getSlotState(d.id, pIdx);
                       return (
                         <td
                           key={d.id}
                           onClick={() => cycleSlotState(d.id, pIdx)}
-                          className="p-1 border-r border-[#E8E7E3] last:border-r-0 cursor-pointer select-none"
+                          className="p-1 border-r border-[#E8E7E3] last:border-r-0 cursor-pointer select-none active:scale-[0.98] transition-transform"
                         >
                           <div
-                            className={`h-13 rounded-md border p-2 flex flex-col justify-between transition-all duration-150 ${stateColors[state]}`}
+                            className={`min-h-[52px] rounded-lg border p-2 flex flex-col justify-between transition-all duration-150 ${stateColors[state]}`}
                           >
                             <div className="text-[9px] uppercase font-bold tracking-wider">{state.replace(/_/g, ' ')}</div>
-                            <div className="text-[9px] opacity-75">{d.short} P{pIdx + 1}</div>
+                            <div className="text-[9px] opacity-75 font-medium">{d.short} P{pIdx + 1}</div>
                           </div>
                         </td>
                       );

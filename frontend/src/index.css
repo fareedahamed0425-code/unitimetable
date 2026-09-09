@@ -71,6 +71,53 @@
   box-shadow: 0 2px 8px rgba(0, 46, 78, 0.06), 0 12px 28px -6px rgba(0, 46, 78, 0.08);
 }
 
+/* Apollo Hero Header Banner (Deep Navy-to-Teal with High Contrast White/Gold text) */
+.apollo-hero-banner {
+  background: linear-gradient(135deg, #002E4E 0%, #06395D 40%, #155674 75%, #2582A1 100%) !important;
+  color: #FFFFFF !important;
+  border: 1px solid #002E4E !important;
+  border-radius: 16px !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 46, 78, 0.3) !important;
+  position: relative;
+  overflow: hidden;
+}
+
+.apollo-hero-banner h1,
+.apollo-hero-banner h2,
+.apollo-hero-banner h3,
+.apollo-hero-title {
+  color: #FFFFFF !important;
+  font-weight: 800 !important;
+  text-shadow: 0 1px 2px rgba(0, 20, 35, 0.4);
+}
+
+.apollo-hero-banner p,
+.apollo-hero-desc {
+  color: #E2F1F8 !important;
+  font-weight: 400 !important;
+}
+
+.apollo-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: rgba(253, 185, 49, 0.22) !important;
+  color: #FDB931 !important;
+  border: 1px solid rgba(253, 185, 49, 0.55) !important;
+}
+
+.apollo-hero-sub {
+  color: #9AD2E5 !important;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
 .lux-card-subtle {
   background: #F0F6F9;
   border: 1px solid #DFECF2;

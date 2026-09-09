@@ -54,21 +54,21 @@ export const SuperAdminProfileView: React.FC<SuperAdminProfileViewProps> = ({
   return (
     <div className="space-y-6 max-w-full animate-fadeIn">
       {/* Super Admin High-Level Banner */}
-      <div className="lux-card p-6 md:p-8 bg-gradient-to-r from-[#002E4E] via-[#0A3B5C] to-[#2582A1] text-white border-[#0A3B5C] shadow-sm relative overflow-hidden">
-        <div className="absolute right-0 top-0 translate-x-10 -translate-y-10 w-96 h-96 bg-[#FDB931]/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="apollo-hero-banner p-6 md:p-8 relative">
+        <div className="absolute right-0 top-0 translate-x-10 -translate-y-10 w-96 h-96 bg-[#FDB931]/15 rounded-full blur-3xl pointer-events-none" />
         
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-[#FDB931]/20 text-[#FDB931] border border-[#FDB931]/30">
+              <span className="apollo-hero-badge">
                 The Apollo University • Root Governance
               </span>
-              <span className="text-xs text-teal-200">ID: {currentUser?.id || 'admin-root'}</span>
+              <span className="apollo-hero-sub">ID: {currentUser?.id || 'admin-root'}</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white">
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight apollo-hero-title">
               Super Admin Control Console
             </h1>
-            <p className="text-xs md:text-sm text-teal-100/90 max-w-2xl leading-relaxed">
+            <p className="text-xs md:text-sm apollo-hero-desc max-w-2xl leading-relaxed">
               Global platform governance, multi-campus scheduling orchestration, database snapshot integrity, and Apollo infrastructure safety locks.
             </p>
           </div>

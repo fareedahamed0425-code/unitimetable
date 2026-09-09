@@ -309,16 +309,16 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
   return (
     <div className="space-y-4 max-w-full">
       {/* Control Bar: Swiss Filter Suite & Actions */}
-      <div className="lux-card p-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 bg-white border-[#E8E7E3]">
+      <div className="lux-card p-3 sm:p-3.5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 bg-white border-[#D8E6ED]">
         {/* Left: Filter Controls */}
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#8B8E99] pr-1">
-            <Filter className="w-3.5 h-3.5" /> Filter:
+        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-[#2582A1] pr-1">
+            <Filter className="w-3.5 h-3.5 text-[#2582A1]" /> Filter:
           </div>
 
-          <div className="relative">
+          <div className="relative flex-1 sm:flex-initial">
             <select
-              className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer bg-[#F9F9F8] border-[#E8E7E3]"
+              className="lux-select text-xs py-1.5 pl-3 pr-8 font-semibold appearance-none cursor-pointer bg-[#F4F8FA] border-[#D8E6ED] w-full text-[#002E4E]"
               value={filterType}
               onChange={e => {
                 const ft = e.target.value as any;
@@ -333,13 +333,13 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
               <option value="TEACHER">Faculty Member</option>
               <option value="ROOM">Venue / Room</option>
             </select>
-            <ChevronDown className="w-3 h-3 text-[#8B8E99] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown className="w-3.5 h-3.5 text-[#2582A1] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
 
           {filterType === 'SECTION' && (
-            <div className="relative">
+            <div className="relative flex-1 sm:flex-initial">
               <select
-                className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer bg-[#F9F9F8] border-[#E8E7E3]"
+                className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer bg-[#F4F8FA] border-[#D8E6ED] w-full text-[#002E4E]"
                 value={selectedFilterId}
                 onChange={e => setSelectedFilterId(e.target.value)}
               >
@@ -349,14 +349,14 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
                   </option>
                 ))}
               </select>
-              <ChevronDown className="w-3 h-3 text-[#8B8E99] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-3.5 h-3.5 text-[#2582A1] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           )}
 
           {filterType === 'TEACHER' && (
-            <div className="relative">
+            <div className="relative flex-1 sm:flex-initial">
               <select
-                className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer bg-[#F9F9F8] border-[#E8E7E3]"
+                className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer bg-[#F4F8FA] border-[#D8E6ED] w-full text-[#002E4E]"
                 value={selectedFilterId}
                 onChange={e => setSelectedFilterId(e.target.value)}
               >
@@ -366,14 +366,14 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
                   </option>
                 ))}
               </select>
-              <ChevronDown className="w-3 h-3 text-[#8B8E99] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-3.5 h-3.5 text-[#2582A1] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           )}
 
           {filterType === 'ROOM' && (
-            <div className="relative">
+            <div className="relative flex-1 sm:flex-initial">
               <select
-                className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer bg-[#F9F9F8] border-[#E8E7E3]"
+                className="lux-select text-xs py-1.5 pl-3 pr-8 font-medium appearance-none cursor-pointer bg-[#F4F8FA] border-[#D8E6ED] w-full text-[#002E4E]"
                 value={selectedFilterId}
                 onChange={e => setSelectedFilterId(e.target.value)}
               >
@@ -383,13 +383,13 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
                   </option>
                 ))}
               </select>
-              <ChevronDown className="w-3 h-3 text-[#8B8E99] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-3.5 h-3.5 text-[#2582A1] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           )}
         </div>
 
         {/* Right: Add Session, Manage Timetables, Export Suite */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-start lg:justify-end">
           {/* Add Class Button */}
           <button
             onClick={() => {
@@ -397,18 +397,18 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
               setNewSessionPeriod(0);
               setIsAddSessionModalOpen(true);
             }}
-            className="lux-btn text-xs py-1.5 px-3 bg-[#121316] text-white hover:bg-black flex items-center gap-1.5 rounded-lg shadow-xs"
+            className="lux-btn lux-btn-gold text-xs py-1.5 px-3 flex items-center gap-1.5 rounded-lg shadow-xs flex-1 sm:flex-initial justify-center"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Class / Session</span>
+            <Plus className="w-3.5 h-3.5 text-[#002E4E]" />
+            <span>Add Class</span>
           </button>
 
           {/* Manage / Switch Timetables */}
           <button
             onClick={() => setIsManageTimetablesModalOpen(true)}
-            className="lux-btn text-xs py-1.5 px-3 bg-white border border-[#E8E7E3] hover:bg-[#F9F9F8] text-[#121316] flex items-center gap-1.5 rounded-lg"
+            className="lux-btn text-xs py-1.5 px-3 bg-white border border-[#D8E6ED] hover:bg-[#F0F6F9] text-[#002E4E] flex items-center gap-1.5 rounded-lg flex-1 sm:flex-initial justify-center font-semibold"
           >
-            <FolderOpen className="w-3.5 h-3.5 text-[#575A65]" />
+            <FolderOpen className="w-3.5 h-3.5 text-[#2582A1]" />
             <span>Timetables ({allTimetables.length})</span>
           </button>
 
@@ -416,7 +416,7 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
           <button
             onClick={handleExportCsv}
             title="Export Timetable as CSV / Excel"
-            className="lux-btn text-xs py-1.5 px-2.5 bg-white border border-[#E8E7E3] hover:bg-[#F9F9F8] text-[#575A65]"
+            className="lux-btn text-xs py-1.5 px-2.5 bg-white border border-[#D8E6ED] hover:bg-[#F0F6F9] text-[#2582A1]"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
           </button>
@@ -424,25 +424,57 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
           <button
             onClick={() => window.print()}
             title="Print Timetable"
-            className="lux-btn text-xs py-1.5 px-2.5 bg-white border border-[#E8E7E3] hover:bg-[#F9F9F8] text-[#575A65]"
+            className="lux-btn text-xs py-1.5 px-2.5 bg-white border border-[#D8E6ED] hover:bg-[#F0F6F9] text-[#002E4E]"
           >
             <Printer className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
+      {/* Mobile Day Selector Tabs (< md screens) */}
+      <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        <div className="flex items-center gap-1.5 min-w-max">
+          <button
+            onClick={() => setSelectedDay(-1)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              selectedDay === -1
+                ? 'bg-[#2582A1] text-white shadow-xs'
+                : 'bg-white border border-[#D8E6ED] text-[#4A6375] hover:text-[#002E4E]'
+            }`}
+          >
+            Full Week (5 Days)
+          </button>
+          {days.map(d => (
+            <button
+              key={d.id}
+              onClick={() => setSelectedDay(d.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                selectedDay === d.id
+                  ? 'bg-[#2582A1] text-white shadow-xs'
+                  : 'bg-white border border-[#D8E6ED] text-[#4A6375] hover:text-[#002E4E]'
+              }`}
+            >
+              {d.name}
+            </button>
+          ))}
+        </div>
+        <div className="hidden sm:block text-[11px] text-[#829BA8] font-medium whitespace-nowrap">
+          {selectedDay === -1 ? 'Showing All Days' : `Filtered: ${days.find(d => d.id === selectedDay)?.name}`}
+        </div>
+      </div>
+
       {/* Moving Mode Notice */}
       {movingEntry && (
-        <div className="p-3 rounded-xl bg-[#121316] text-white text-xs flex items-center justify-between shadow-xs animate-fadeIn">
-          <div className="flex items-center gap-2.5">
-            <Move className="w-4 h-4 text-amber-400" />
-            <span>
-              <strong>Relocating session:</strong> '{movingEntry.courseCode} — {movingEntry.activityName}'. Click any target cell on the grid below.
+        <div className="p-3 rounded-xl bg-[#002E4E] text-white text-xs flex items-center justify-between shadow-xs animate-fadeIn">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Move className="w-4 h-4 text-[#FDB931] flex-shrink-0" />
+            <span className="truncate">
+              <strong>Relocating session:</strong> '{movingEntry.courseCode} — {movingEntry.activityName}'. Click target cell below.
             </span>
           </div>
           <button
             onClick={() => setMovingEntry(null)}
-            className="text-xs font-bold text-white/80 hover:text-white underline px-2 py-1"
+            className="text-xs font-bold text-[#FDB931] hover:underline px-2 py-1 flex-shrink-0"
           >
             Cancel
           </button>
@@ -462,16 +494,16 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
       )}
 
       {/* 1. WEEKLY GRID VIEW */}
-      <div className="lux-card overflow-hidden border-[#E8E7E3] bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse min-w-[960px]">
+      <div className="lux-card overflow-hidden border-[#D8E6ED] bg-white shadow-2xs">
+        <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <table className="w-full border-collapse min-w-[700px] sm:min-w-[960px]">
             <thead>
-              <tr className="bg-[#FAF9F7] border-b border-[#E8E7E3]">
-                <th className="p-3 text-left text-xs font-bold uppercase tracking-wider text-[#8B8E99] w-28 pl-4">
+              <tr className="bg-[#F0F6F9] border-b border-[#D8E6ED]">
+                <th className="p-3 text-left text-xs font-bold uppercase tracking-wider text-[#2582A1] w-28 pl-4 sticky left-0 bg-[#F0F6F9] z-10 border-r border-[#D8E6ED]">
                   Time / Slot
                 </th>
-                {days.map(d => (
-                  <th key={d.id} className="p-3 text-center text-xs font-bold text-[#121316]">
+                {(selectedDay === -1 ? days : days.filter(d => d.id === selectedDay)).map(d => (
+                  <th key={d.id} className="p-3 text-center text-xs font-bold text-[#002E4E]">
                     {d.name}
                   </th>
                 ))}
@@ -481,11 +513,11 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
               {periods.map(p => {
                 if (p.isBreak) {
                   return (
-                    <tr key={p.index} className="bg-[#F6F5F2]/70">
-                      <td className="p-2.5 text-xs font-bold text-[#8B8E99] pl-4 whitespace-nowrap">
+                    <tr key={p.index} className="bg-[#F4F8FA]">
+                      <td className="p-2.5 text-xs font-bold text-[#2582A1] pl-4 whitespace-nowrap sticky left-0 bg-[#F4F8FA] z-10 border-r border-[#D8E6ED]">
                         {p.time}
                       </td>
-                      <td colSpan={5} className="p-2.5 text-center text-xs font-bold tracking-wider text-[#8B8E99] uppercase">
+                      <td colSpan={selectedDay === -1 ? days.length : 1} className="p-2.5 text-center text-xs font-bold tracking-wider text-[#4A6375] uppercase">
                         — {p.label} (Recess) —
                       </td>
                     </tr>
@@ -493,13 +525,13 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
                 }
 
                 return (
-                  <tr key={p.index} className="hover:bg-[#FCFCFA] transition-colors">
-                    <td className="p-3 text-xs font-semibold text-[#575A65] pl-4 border-r border-[#E8E7E3] whitespace-nowrap align-top">
+                  <tr key={p.index} className="hover:bg-[#F9FBFC] transition-colors">
+                    <td className="p-3 text-xs font-semibold text-[#002E4E] pl-4 border-r border-[#D8E6ED] whitespace-nowrap align-top sticky left-0 bg-white z-10">
                       <div>{p.time}</div>
-                      <div className="text-[10px] text-[#8B8E99] mt-0.5">{p.label}</div>
+                      <div className="text-[10px] text-[#2582A1] font-medium mt-0.5">{p.label}</div>
                     </td>
 
-                    {days.map(d => {
+                    {(selectedDay === -1 ? days : days.filter(d => d.id === selectedDay)).map(d => {
                       const cellEntries = filteredEntries.filter(
                         e => e.dayOfWeek === d.id && e.periodIndex === p.index
                       );

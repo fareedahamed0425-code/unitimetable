@@ -1,7 +1,7 @@
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
-import { initializeDatabase } from './db/database';
+import { initializeDatabase, syncFromPostgres } from './db/database';
 import { seedDatabase } from './db/seed';
 import { apiRouter } from './routes/api';
 
@@ -14,9 +14,15 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Initialize DB and Seed Demo Data
+// Initialize DB and Seed PostgreSQL / Local Data
 initializeDatabase();
-seedDatabase(false);
+syncFromPostgres().then(synced => {
+  if (!synced) {
+    seedDatabase(false);
+  }
+}).catch(() => {
+  seedDatabase(false);
+});
 
 // Register API Router
 app.use('/api', apiRouter);

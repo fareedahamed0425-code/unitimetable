@@ -1,10 +1,12 @@
-import { PreferencePriority, SmartPreferenceRule } from '../../../shared/types';
+import OpenAI from 'openai';
+import { SmartPreferenceRule } from '../../../shared/types';
 
 export interface NLPParsedResponse {
   originalPrompt: string;
   summary: string;
   interpretedRules: SmartPreferenceRule[];
   confidence: number;
+  reasoning?: string;
 }
 
 export class NLPPreferenceParser {
@@ -14,7 +16,10 @@ export class NLPPreferenceParser {
       throw new Error("NVIDIA_API_KEY is missing in environment variables.");
     }
 
-    const invoke_url = "https://integrate.api.nvidia.com/v1/chat/completions";
+    const client = new OpenAI({
+      baseURL: "https://integrate.api.nvidia.com/v1",
+      apiKey: apiKey
+    });
 
     const systemPrompt = `You are a Smart Timetabling Preference Parser.
 You receive natural language preferences from university administrators about timetables.
@@ -41,43 +46,51 @@ Respond ONLY with valid JSON in this exact structure, with no markdown formattin
   "confidence": 0.95
 }`;
 
-    const payload = {
-      model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: prompt }
-      ],
-      max_tokens: 4096,
-      reasoning_budget: 1024,
-      temperature: 0.6,
-      top_p: 0.95,
-      stream: false
-    };
-
     try {
-      const response = await fetch(invoke_url, {
-        method: 'POST',
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "Accept": "application/json"
+      const completion: any = await client.chat.completions.create({
+        model: "nvidia/nemotron-3-ultra-550b-a55b",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt }
+        ],
+        temperature: 1,
+        top_p: 0.95,
+        max_tokens: 16384,
+        extra_body: {
+          chat_template_kwargs: { enable_thinking: true }
         },
-        body: JSON.stringify(payload)
-      });
+        stream: true
+      } as any);
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`NVIDIA API Error: ${response.status} - ${errText}`);
+      let reasoningContent = '';
+      let textContent = '';
+
+      for await (const chunk of completion) {
+        if (!chunk.choices || chunk.choices.length === 0) continue;
+        
+        const delta = chunk.choices[0].delta as any;
+        if (delta.reasoning_content) {
+          reasoningContent += delta.reasoning_content;
+        }
+        if (delta.content) {
+          textContent += delta.content;
+        }
       }
 
-      const data = (await response.json()) as any;
-      const content = data.choices?.[0]?.message?.content || "";
+      // Extract JSON from output content
+      const jsonMatch = textContent.match(/\{[\s\S]*\}/);
+      const jsonStr = jsonMatch ? jsonMatch[0] : textContent;
       
-      // Parse JSON from content (it might be wrapped in ```json)
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      const jsonStr = jsonMatch ? jsonMatch[0] : content;
-      
-      const parsedData = JSON.parse(jsonStr);
+      let parsedData: any = {};
+      try {
+        parsedData = JSON.parse(jsonStr);
+      } catch {
+        parsedData = {
+          summary: textContent.slice(0, 150) || "Interpreted via Nemotron 3 Ultra reasoning",
+          interpretedRules: [],
+          confidence: 0.85
+        };
+      }
 
       // Add generated IDs if missing
       const rules = (parsedData.interpretedRules || []).map((rule: any, idx: number) => ({
@@ -87,13 +100,14 @@ Respond ONLY with valid JSON in this exact structure, with no markdown formattin
 
       return {
         originalPrompt: prompt,
-        summary: parsedData.summary || "Parsed using NVIDIA AI",
+        summary: parsedData.summary || "Parsed using NVIDIA Nemotron 3 Ultra AI",
         interpretedRules: rules,
-        confidence: parsedData.confidence || 0.95
+        confidence: parsedData.confidence || 0.95,
+        reasoning: reasoningContent || undefined
       };
-    } catch (error) {
-      console.error("Error parsing preferences with NVIDIA AI:", error);
-      throw new Error("Failed to parse preferences using AI reasoning.");
+    } catch (error: any) {
+      console.error("Error parsing preferences with NVIDIA Nemotron 3 Ultra:", error);
+      throw new Error(`Failed to parse preferences using AI: ${error.message}`);
     }
   }
 }

@@ -3,13 +3,13 @@ import {
   Calendar, 
   Sparkles, 
   Search, 
-  ChevronDown,
   Command,
   X,
-  ExternalLink,
+  Menu,
   ShieldCheck,
   Download,
-  FileCode
+  FileCode,
+  LogOut
 } from 'lucide-react';
 import { User, Timetable } from '../../../shared/types';
 import { ROLE_CONFIGS } from '../config/roleProfiles';
@@ -25,6 +25,8 @@ interface NavbarProps {
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onNavigate: (section: string) => void;
+  onToggleMobileMenu?: () => void;
+  onLogout?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -37,14 +39,15 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenPublishing,
   searchQuery,
   onSearchChange,
-  onNavigate
+  onNavigate,
+  onToggleMobileMenu,
+  onLogout
 }) => {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
   const role = currentUser?.role || 'TIMETABLE_COORDINATOR';
   const roleConfig = ROLE_CONFIGS[role] || ROLE_CONFIGS.TIMETABLE_COORDINATOR;
-
-  const statusLabel = activeTimetable ? activeTimetable.status.replace(/_/g, ' ') : 'NO SCHEDULE';
 
   // Helper to format user display name
   const formatUser = (user: User | null) => {
@@ -60,161 +63,173 @@ export const Navbar: React.FC<NavbarProps> = ({
   const currentDisplay = formatUser(currentUser);
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#D8E6ED] mb-4 shadow-2xs">
-      <div className="w-full max-w-[1700px] mx-auto px-4 md:px-6 h-15 flex items-center justify-between gap-3">
-        {/* Left: Apollo University Vector Logo + Role Badge */}
-        <div className="flex items-center gap-3 min-w-0 flex-shrink-0">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => onNavigate('dashboard')}>
-            <img
-              src="/Apollo Vector image.svg"
-              alt="The Apollo University"
-              className="h-9 w-auto max-w-[150px] object-contain"
-            />
-            <div className="hidden sm:block border-l border-[#D8E6ED] pl-2.5">
-              <span className="text-[13px] font-bold text-[#002E4E] tracking-tight leading-none block">
-                Timetable Platform
-              </span>
-              <span className="text-[10px] text-[#2582A1] font-semibold tracking-wider uppercase">
-                FET 6.0 ENGINE
-              </span>
+    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#D8E6ED] w-full px-3 sm:px-4 md:px-6 py-2.5 transition-all">
+      <div className="max-w-[1700px] mx-auto flex items-center justify-between gap-2 sm:gap-4">
+        {/* Left: Mobile Menu Trigger + Brand Logo & Title */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Mobile Hamburger Drawer Trigger (Visible on < lg) */}
+          <button
+            onClick={onToggleMobileMenu}
+            className="lg:hidden p-1.5 rounded-lg text-[#002E4E] hover:bg-[#F0F6F9] transition-colors focus:outline-none"
+            aria-label="Toggle Navigation Menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
+          {/* Apollo University Vector Logo */}
+          <div 
+            onClick={() => onNavigate('role-profile')}
+            className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group select-none"
+          >
+            <div className="h-8 sm:h-9 w-auto flex items-center justify-center p-1 rounded-lg bg-white border border-[#D8E6ED] group-hover:border-[#2582A1] transition-all shadow-2xs">
+              <img
+                src="/Apollo Vector image.svg"
+                alt="The Apollo University"
+                className="h-6 sm:h-7 w-auto object-contain"
+              />
+            </div>
+            
+            <div className="hidden xs:block sm:block">
+              <div className="flex items-center gap-1.5">
+                <span className="font-extrabold text-sm sm:text-base text-[#002E4E] tracking-tight group-hover:text-[#2582A1] transition-colors">
+                  The Apollo University
+                </span>
+                <span className="hidden md:inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#FDB931] text-[#002E4E] uppercase tracking-wider">
+                  FET Core
+                </span>
+              </div>
+              <p className="text-[10px] text-[#4A6375] font-medium hidden sm:block -mt-0.5">
+                Smart Academic Timetable Platform
+              </p>
             </div>
           </div>
-
-          <span className={`hidden md:inline-flex text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-md border whitespace-nowrap ${roleConfig.badgeBg} ${roleConfig.badgeText} ${roleConfig.badgeBorder}`}>
-            {roleConfig.shortTitle}
-          </span>
         </div>
 
-        {/* Center: Search Field */}
-        <div className="flex-1 max-w-xs md:max-w-md mx-2 min-w-0">
-          <div className="relative flex items-center w-full">
-            <Search className="w-3.5 h-3.5 text-[#829BA8] absolute left-3 pointer-events-none" />
+        {/* Center: Desktop Global Live Search */}
+        <div className="hidden sm:flex flex-1 max-w-xs md:max-w-md mx-2">
+          <div className="relative w-full">
+            <Search className="w-3.5 h-3.5 text-[#829BA8] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search courses, professors, venues..."
+              placeholder="Search faculty, subjects, rooms, batches..."
               value={searchQuery}
               onChange={e => onSearchChange(e.target.value)}
-              className="lux-input w-full pl-8 pr-10 text-xs h-8.5 bg-[#F4F8FA] border-[#D8E6ED] focus:bg-white text-[#002E4E] placeholder:text-[#829BA8] rounded-lg"
+              className="lux-input w-full pl-8 pr-8 text-xs h-8 sm:h-8.5 bg-[#F4F8FA] border-[#D8E6ED] text-[#002E4E] placeholder:text-[#829BA8] focus:bg-white rounded-lg"
             />
-            <div className="absolute right-2 hidden sm:flex items-center gap-0.5 text-[9px] text-[#829BA8] font-medium bg-white px-1.5 py-0.5 rounded border border-[#D8E6ED] pointer-events-none">
-              <Command className="w-2.5 h-2.5" /> K
-            </div>
+            {searchQuery ? (
+              <button 
+                onClick={() => onSearchChange('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-[#829BA8] hover:text-[#002E4E]"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            ) : (
+              <kbd className="hidden md:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-mono text-[#829BA8] bg-white border border-[#D8E6ED] rounded absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                <Command className="w-2.5 h-2.5" /> K
+              </kbd>
+            )}
           </div>
         </div>
 
-        {/* Right: Academic Term + Primary Action + Persona Switcher */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Term Pill (Visible on lg+) */}
-          <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F0F6F9] border border-[#D8E6ED] text-[11px] font-semibold text-[#002E4E]">
-            <Calendar className="w-3 h-3 text-[#2582A1]" />
-            <span>Odd Sem 2026–27</span>
-          </div>
+        {/* Right: Quick Actions, User Avatar & Logout */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
+          {/* Mobile Search Toggle Button */}
+          <button
+            onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
+            className="sm:hidden p-1.5 rounded-lg text-[#4A6375] hover:text-[#002E4E] hover:bg-[#F0F6F9]"
+            title="Search"
+          >
+            <Search className="w-4 h-4" />
+          </button>
 
-          {/* Quick Action Button for Admin / Coordinator / Student with Apollo Colors */}
-          {currentUser?.role !== 'STUDENT' && currentUser?.role !== 'FACULTY' ? (
-            <button
-              onClick={onOpenWizard}
-              className="lux-btn lux-btn-gold text-xs h-8.5 px-3.5 flex items-center gap-1.5 whitespace-nowrap rounded-lg"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-[#002E4E]" />
-              <span className="hidden sm:inline">Smart Wizard</span>
-            </button>
-          ) : currentUser?.role === 'FACULTY' ? (
-            <button
-              onClick={() => onNavigate('availability')}
-              className="lux-btn text-xs h-8.5 px-3 bg-[#E8F4F8] text-[#2582A1] border border-[#C4E2EC] hover:bg-[#D3ECF4] flex items-center gap-1.5 whitespace-nowrap rounded-lg font-semibold"
-            >
-              <span>Submit Leave</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => onNavigate('timetable')}
-              className="lux-btn text-xs h-8.5 px-3 bg-[#E8F4F8] text-[#2582A1] border border-[#C4E2EC] hover:bg-[#D3ECF4] flex items-center gap-1.5 whitespace-nowrap rounded-lg font-semibold"
-            >
-              <span>My Routine</span>
-            </button>
-          )}
+          {/* AI Wizard Quick Button */}
+          <button
+            onClick={onOpenWizard}
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold bg-[#FDB931] text-[#002E4E] hover:bg-[#EAA319] transition-all shadow-2xs active:scale-95"
+            title="Generate AI Timetable"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-[#002E4E]" />
+            <span className="hidden md:inline">AI Wizard</span>
+          </button>
 
-          {/* Role Persona Switcher Dropdown */}
-          <div className="relative flex items-center bg-[#F0F6F9] border border-[#D8E6ED] rounded-lg h-8.5 overflow-hidden hover:border-[#2582A1] transition-colors">
-            <select
-              className="text-xs font-semibold text-[#002E4E] bg-transparent outline-none cursor-pointer pl-2.5 pr-7 h-full appearance-none max-w-[140px] sm:max-w-[190px] truncate"
-              value={currentUser?.id || ''}
-              onChange={e => {
-                const u = allUsers.find(user => user.id === e.target.value);
-                if (u) onSelectUser(u);
-              }}
-            >
-              {allUsers.map(user => {
-                const info = formatUser(user);
-                return (
-                  <option key={user.id} value={user.id}>
-                    {info.name} ({user.role.replace(/_/g, ' ')})
-                  </option>
-                );
-              })}
-            </select>
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
-              <ChevronDown className="w-3.5 h-3.5 text-[#2582A1]" />
-            </div>
-          </div>
+
 
           {/* Profile Circle Avatar Modal Trigger */}
           <button
             onClick={() => setIsProfileModalOpen(true)}
             title="Open Role Details"
-            className="w-8.5 h-8.5 rounded-lg flex items-center justify-center font-bold text-xs bg-[#002E4E] text-white hover:bg-[#2582A1] transition-colors flex-shrink-0 shadow-2xs"
+            className="w-8 sm:w-8.5 h-8 sm:h-8.5 rounded-lg flex items-center justify-center font-bold text-xs bg-[#002E4E] text-white hover:bg-[#2582A1] transition-colors flex-shrink-0 shadow-2xs cursor-pointer"
           >
             {currentDisplay.name.charAt(0)}
           </button>
+
+          {/* Direct Logout Button */}
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              title="Sign Out"
+              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
+          )}
         </div>
       </div>
 
+      {/* Mobile Expandable Search Bar */}
+      {isMobileSearchOpen && (
+        <div className="sm:hidden pt-2 pb-1 animate-fadeIn">
+          <div className="relative w-full">
+            <Search className="w-3.5 h-3.5 text-[#829BA8] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search subjects, faculty, batches..."
+              value={searchQuery}
+              onChange={e => onSearchChange(e.target.value)}
+              className="lux-input w-full pl-8 pr-8 text-xs h-8 bg-[#F4F8FA] border-[#D8E6ED] text-[#002E4E] rounded-lg"
+              autoFocus
+            />
+          </div>
+        </div>
+      )}
+
       {/* Role Profile Modal */}
       {isProfileModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-2xl border border-[#D8E6ED] shadow-xl max-w-lg w-full p-6 space-y-5 animate-scaleUp">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-[#D8E6ED] shadow-xl max-w-lg w-full p-5 sm:p-6 space-y-5 animate-scaleUp max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-base bg-[#002E4E] text-white">
+                <div className="w-11 sm:w-12 h-11 sm:h-12 rounded-xl flex items-center justify-center font-bold text-base bg-[#002E4E] text-white flex-shrink-0">
                   {currentDisplay.name.charAt(0)}
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-base font-bold text-[#002E4E]">{currentDisplay.name}</h2>
-                    <span className={`text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded border ${roleConfig.badgeBg} ${roleConfig.badgeText} ${roleConfig.badgeBorder}`}>
-                      {roleConfig.badge}
-                    </span>
-                  </div>
-                  <p className="text-xs text-[#829BA8]">{currentUser?.email}</p>
+                  <h3 className="text-base font-bold text-[#002E4E]">{currentDisplay.name}</h3>
+                  <div className="text-xs text-[#2582A1] font-semibold">{currentDisplay.role}</div>
+                  <div className="text-[11px] text-[#4A6375] mt-0.5">{currentUser?.email}</div>
                 </div>
               </div>
               <button
                 onClick={() => setIsProfileModalOpen(false)}
-                className="p-1.5 rounded-lg text-[#829BA8] hover:text-[#002E4E] hover:bg-[#F0F6F9] transition-colors"
+                className="p-1.5 rounded-lg text-[#829BA8] hover:text-[#002E4E] hover:bg-[#F0F6F9]"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-4 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] space-y-2">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-[#2582A1]">Role Scope & Responsibilities</div>
-              <p className="text-xs text-[#4A6375] leading-relaxed">
-                {roleConfig.description}
-              </p>
-              <div className="pt-2 border-t border-[#D8E6ED] text-[11px] text-[#002E4E] font-medium">
-                Scope: <strong>The Apollo University • {roleConfig.departmentScope}</strong>
-              </div>
+            <div className="p-3.5 rounded-xl bg-[#F0F6F9] border border-[#D8E6ED] space-y-1.5">
+              <div className="text-xs font-bold text-[#002E4E]">{roleConfig.title}</div>
+              <p className="text-xs text-[#4A6375] leading-relaxed">{roleConfig.description}</p>
             </div>
 
-            {/* Quick Switch Persona Buttons */}
             <div className="space-y-2">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-[#829BA8]">Switch Active Role Persona</div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="text-[11px] font-bold text-[#829BA8] uppercase tracking-wider">
+                Switch Role Profile
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {allUsers.map(user => {
-                  const uRoleConfig = ROLE_CONFIGS[user.role] || ROLE_CONFIGS.TIMETABLE_COORDINATOR;
+                  const uInfo = formatUser(user);
                   const isSelected = user.id === currentUser?.id;
-                  const info = formatUser(user);
                   return (
                     <button
                       key={user.id}
@@ -224,30 +239,36 @@ export const Navbar: React.FC<NavbarProps> = ({
                       }}
                       className={`p-2.5 rounded-xl border text-left transition-all ${
                         isSelected
-                          ? 'bg-[#002E4E] text-white border-[#002E4E]'
-                          : 'bg-white hover:bg-[#F4F8FA] border-[#D8E6ED] text-[#002E4E]'
+                          ? 'border-[#2582A1] bg-[#E8F4F8] shadow-xs'
+                          : 'border-[#D8E6ED] bg-white hover:border-[#B8D4E1] hover:bg-[#F4F8FA]'
                       }`}
                     >
-                      <div className="text-[11px] font-bold truncate">{info.name}</div>
-                      <div className={`text-[9px] font-medium truncate ${isSelected ? 'text-teal-200' : 'text-[#829BA8]'}`}>
-                        {uRoleConfig.shortTitle}
-                      </div>
+                      <div className="text-xs font-bold text-[#002E4E] truncate">{uInfo.name}</div>
+                      <div className="text-[10px] text-[#2582A1] font-medium">{uInfo.role}</div>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            <div className="pt-2 flex justify-end">
+            <div className="pt-2 flex items-center justify-between gap-2 border-t border-[#D8E6ED]">
+              {onLogout && (
+                <button
+                  onClick={() => {
+                    setIsProfileModalOpen(false);
+                    onLogout();
+                  }}
+                  className="px-4 py-2 rounded-lg text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out</span>
+                </button>
+              )}
               <button
-                onClick={() => {
-                  setIsProfileModalOpen(false);
-                  onNavigate('role-profile');
-                }}
-                className="w-full py-2.5 rounded-xl bg-[#2582A1] text-white text-xs font-semibold hover:bg-[#1C6982] transition-colors flex items-center justify-center gap-2 shadow-xs"
+                onClick={() => setIsProfileModalOpen(false)}
+                className="lux-btn lux-btn-navy text-xs px-5 ml-auto"
               >
-                <span>Open {roleConfig.shortTitle} Workspace</span>
-                <ExternalLink className="w-3.5 h-3.5" />
+                Done
               </button>
             </div>
           </div>

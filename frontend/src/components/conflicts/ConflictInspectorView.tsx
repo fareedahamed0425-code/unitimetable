@@ -6,18 +6,24 @@ import {
   ArrowRight,
   ChevronDown
 } from 'lucide-react';
-import { TimetableConflict } from '../../../../shared/types';
+import { Timetable, TimetableConflict } from '../../../../shared/types';
 
 interface ConflictInspectorProps {
-  conflicts: TimetableConflict[];
-  onNavigateToGrid: () => void;
+  conflicts?: TimetableConflict[];
+  onNavigateToGrid?: () => void;
+  timetable?: Timetable | null;
+  onRefresh?: () => void;
 }
 
 export const ConflictInspectorView: React.FC<ConflictInspectorProps> = ({
-  conflicts,
-  onNavigateToGrid
+  conflicts: rawConflicts,
+  onNavigateToGrid,
+  timetable,
+  onRefresh
 }) => {
   const [severityFilter, setSeverityFilter] = useState<'ALL' | 'CRITICAL' | 'MAJOR' | 'WARNING'>('ALL');
+
+  const conflicts = rawConflicts || timetable?.conflicts || [];
 
   const filtered = conflicts.filter(c => {
     if (severityFilter === 'ALL') return true;
@@ -48,17 +54,17 @@ export const ConflictInspectorView: React.FC<ConflictInspectorProps> = ({
       </div>
 
       {/* Conflicts Count & Filter Bar */}
-      <div className="lux-card p-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="text-xs font-semibold text-[#121316]">
+      <div className="lux-card p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white border-[#D8E6ED]">
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+          <div className="text-xs font-semibold text-[#002E4E]">
             Detected Collisions: <span className={`font-bold ${conflicts.length === 0 ? 'text-[#166534]' : 'text-[#B91C1C]'}`}>{conflicts.length}</span>
           </div>
 
-          <div className="flex items-center gap-2 pl-4 border-l border-[#E8E7E3]">
-            <Filter className="w-3.5 h-3.5 text-[#8B8E99]" />
-            <div className="relative">
+          <div className="flex items-center gap-2 pl-3 border-l border-[#D8E6ED] flex-1 sm:flex-initial">
+            <Filter className="w-3.5 h-3.5 text-[#2582A1]" />
+            <div className="relative flex-1 sm:flex-initial">
               <select
-                className="lux-select text-xs py-1 pl-3 pr-8 font-medium appearance-none cursor-pointer"
+                className="lux-select text-xs py-1 pl-3 pr-8 font-semibold appearance-none cursor-pointer bg-[#F4F8FA] border-[#D8E6ED] text-[#002E4E] w-full"
                 value={severityFilter}
                 onChange={e => setSeverityFilter(e.target.value as any)}
               >
@@ -67,17 +73,17 @@ export const ConflictInspectorView: React.FC<ConflictInspectorProps> = ({
                 <option value="MAJOR">Major Incompatibilities</option>
                 <option value="WARNING">Warnings</option>
               </select>
-              <ChevronDown className="w-3 h-3 text-[#8B8E99] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-3 h-3 text-[#2582A1] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           </div>
         </div>
 
         <button
           onClick={onNavigateToGrid}
-          className="lux-btn text-xs py-1.5 px-4 flex items-center gap-1.5"
+          className="lux-btn lux-btn-primary text-xs py-1.5 px-4 flex items-center gap-1.5 w-full sm:w-auto justify-center"
         >
           <span>Open Timetable Grid</span>
-          <ArrowRight className="w-3.5 h-3.5 text-[#8B8E99]" />
+          <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>
 

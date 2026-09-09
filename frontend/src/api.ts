@@ -22,10 +22,80 @@ const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 export const api = {
   // Auth
-  async getUsers(): Promise<User[]> {
-    const res = await fetch(`${API_BASE}/auth/users`);
+  async login(email: string, password: string): Promise<{ user: User; token: string }> {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
     const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || 'Invalid email or password');
+    }
+    if (json.data?.token) {
+      localStorage.setItem('apollo_auth_token', json.data.token);
+      localStorage.setItem('apollo_auth_user', JSON.stringify(json.data.user));
+    }
     return json.data;
+  },
+
+  async register(params: { name: string; email: string; password: string; confirmPassword?: string; role?: string }): Promise<{ user: User; token: string }> {
+    const res = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || 'Registration failed');
+    }
+    if (json.data?.token) {
+      localStorage.setItem('apollo_auth_token', json.data.token);
+      localStorage.setItem('apollo_auth_user', JSON.stringify(json.data.user));
+    }
+    return json.data;
+  },
+
+  async getMe(): Promise<User | null> {
+    const token = localStorage.getItem('apollo_auth_token');
+    if (!token) return null;
+    try {
+      const res = await fetch(`${API_BASE}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        localStorage.setItem('apollo_auth_user', JSON.stringify(json.data));
+        return json.data;
+      }
+    } catch (e) {
+      console.error('getMe error:', e);
+    }
+    return null;
+  },
+
+  logout(): void {
+    localStorage.removeItem('apollo_auth_token');
+    localStorage.removeItem('apollo_auth_user');
+  },
+
+  getStoredUser(): User | null {
+    try {
+      const u = localStorage.getItem('apollo_auth_user');
+      return u ? JSON.parse(u) : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async getUsers(): Promise<User[]> {
+    try {
+      const res = await fetch(`${API_BASE}/users`);
+      const json = await res.json();
+      return json.data || [];
+    } catch {
+      return [];
+    }
   },
 
   // Academic Hierarchy

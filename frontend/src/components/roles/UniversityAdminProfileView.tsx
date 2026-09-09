@@ -56,21 +56,21 @@ export const UniversityAdminProfileView: React.FC<UniversityAdminProfileViewProp
   return (
     <div className="space-y-6 max-w-full animate-fadeIn">
       {/* Executive Dean Banner */}
-      <div className="lux-card p-6 md:p-8 bg-gradient-to-r from-[#002E4E] via-[#0A3B5C] to-[#2582A1] text-white border-[#0A3B5C] shadow-sm relative overflow-hidden">
-        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-80 h-80 bg-[#FDB931]/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="apollo-hero-banner p-6 md:p-8 relative">
+        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-80 h-80 bg-[#FDB931]/15 rounded-full blur-3xl pointer-events-none" />
         
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded bg-[#FDB931]/20 text-[#FDB931] border border-[#FDB931]/30">
+              <span className="apollo-hero-badge">
                 The Apollo University • Academic Directorate
               </span>
-              <span className="text-xs text-teal-200">Term: 2026–2027 (Odd Semester)</span>
+              <span className="apollo-hero-sub">Term: 2026–2027 (Odd Semester)</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white">
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight apollo-hero-title">
               Dean of Academic Affairs Directorate
             </h1>
-            <p className="text-xs md:text-sm text-teal-100/90 max-w-2xl leading-relaxed">
+            <p className="text-xs md:text-sm apollo-hero-desc max-w-2xl leading-relaxed">
               Institutional curriculum oversight, cross-department scheduling compliance, room utilization audits, and statutory academic calendar approvals.
             </p>
           </div>
