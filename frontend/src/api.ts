@@ -504,5 +504,186 @@ export const api = {
     const res = await fetch(url('audit-logs'));
     const json = await res.json();
     return json.data;
+  },
+
+  // Faculty Email Dispatch
+  async dispatchTimetables(timetableId: string = 'tt-active'): Promise<{
+    success: boolean;
+    sentCount: number;
+    failedCount: number;
+    skippedCount: number;
+    results: any[];
+    message?: string;
+    error?: string;
+  }> {
+    const res = await fetch(url('admin/dispatch-timetables'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timetableId })
+    });
+    return res.json();
+  },
+
+  // Admin Academic Settings - Slots
+  async getAdminSlots(): Promise<any[]> {
+    const res = await fetch(url('admin/calendar/slots'));
+    const json = await res.json();
+    return json.data || [];
+  },
+
+  async addSlot(data: any): Promise<any> {
+    const res = await fetch(url('admin/calendar/slots'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to add time slot');
+    return json.data;
+  },
+
+  async updateSlot(id: string, data: any): Promise<any> {
+    const res = await fetch(url(`admin/calendar/slots/${id}`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to update time slot');
+    return json.data;
+  },
+
+  async deleteSlot(id: string): Promise<any> {
+    const res = await fetch(url(`admin/calendar/slots/${id}`), {
+      method: 'DELETE'
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to delete time slot');
+    return json.data;
+  },
+
+  // Admin Academic Settings - Rooms & Buildings
+  async getAdminRooms(): Promise<{ rooms: any[]; buildings: any[] }> {
+    const res = await fetch(url('admin/rooms'));
+    const json = await res.json();
+    return json.data || { rooms: [], buildings: [] };
+  },
+
+  async addRoom(data: any): Promise<any> {
+    const res = await fetch(url('admin/rooms'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to add room');
+    return json.data;
+  },
+
+  async updateRoom(id: string, data: any): Promise<any> {
+    const res = await fetch(url(`admin/rooms/${id}`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to update room');
+    return json.data;
+  },
+
+  async deleteRoom(id: string): Promise<any> {
+    const res = await fetch(url(`admin/rooms/${id}`), {
+      method: 'DELETE'
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to delete room');
+    return json.data;
+  },
+
+  async addBuilding(data: any): Promise<any> {
+    const res = await fetch(url('admin/buildings'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to add building');
+    return json.data;
+  },
+
+  async deleteBuilding(id: string): Promise<any> {
+    const res = await fetch(url(`admin/buildings/${id}`), {
+      method: 'DELETE'
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to delete building');
+    return json.data;
+  },
+
+  // Admin Academic Settings - Cohorts & Hierarchy
+  async getCohorts(): Promise<any> {
+    const res = await fetch(url('admin/cohorts'));
+    const json = await res.json();
+    return json.data || {};
+  },
+
+  async addBatch(data: any): Promise<any> {
+    const res = await fetch(url('admin/batches'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to add batch');
+    return json.data;
+  },
+
+  async addSemester(data: any): Promise<any> {
+    const res = await fetch(url('admin/semesters'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to add semester');
+    return json.data;
+  },
+
+  async addSection(data: any): Promise<any> {
+    const res = await fetch(url('admin/sections'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to add section');
+    return json.data;
+  },
+
+  async updateSection(id: string, data: any): Promise<any> {
+    const res = await fetch(url(`admin/sections/${id}`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to update section');
+    return json.data;
+  },
+
+  async deleteSection(id: string): Promise<any> {
+    const res = await fetch(url(`admin/sections/${id}`), {
+      method: 'DELETE'
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to delete section');
+    return json.data;
+  },
+
+  async getHierarchyFull(): Promise<any[]> {
+    const res = await fetch(url('admin/hierarchy/full'));
+    const json = await res.json();
+    return json.data || [];
   }
 };
+

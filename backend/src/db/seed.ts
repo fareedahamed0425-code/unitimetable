@@ -122,64 +122,97 @@ export function seedDatabase(force: boolean = false): void {
       progCs, deptCs, 'B.Tech in Cyber Security', 'BTECH-CS', 'B.Tech', 8
     );
 
-    // 6. Academic Year & Semesters
+    // 6. Academic Year & Semesters (All 4 Years)
     const ayCurrent = 'ay-2026-2027';
     db.prepare('INSERT INTO academic_years (id, university_id, name, start_date, end_date, is_current) VALUES (?, ?, ?, ?, ?, ?)').run(
       ayCurrent, univId, 'Academic Year 2026–2027', '2026-08-01', '2026-12-20', 1
     );
 
-    const semCse = 'sem-cse-3';
-    const semAids = 'sem-aids-3';
-    const semAiml = 'sem-aiml-3';
-    const semCs = 'sem-cs-3';
+    const semList = [
+      // Year 1 (Sem 1)
+      { id: 'sem-cse-1', prog: progCse, num: 1, name: 'Semester 1 (CSE)' },
+      { id: 'sem-aids-1', prog: progAids, num: 1, name: 'Semester 1 (AI&DS)' },
+      { id: 'sem-aiml-1', prog: progAiml, num: 1, name: 'Semester 1 (AI&ML)' },
+      { id: 'sem-cs-1', prog: progCs, num: 1, name: 'Semester 1 (Cyber Security)' },
+      // Year 2 (Sem 3)
+      { id: 'sem-cse-3', prog: progCse, num: 3, name: 'Semester 3 (CSE)' },
+      { id: 'sem-aids-3', prog: progAids, num: 3, name: 'Semester 3 (AI&DS)' },
+      { id: 'sem-aiml-3', prog: progAiml, num: 3, name: 'Semester 3 (AI&ML)' },
+      { id: 'sem-cs-3', prog: progCs, num: 3, name: 'Semester 3 (Cyber Security)' },
+      // Year 3 (Sem 5)
+      { id: 'sem-cse-5', prog: progCse, num: 5, name: 'Semester 5 (CSE)' },
+      { id: 'sem-aids-5', prog: progAids, num: 5, name: 'Semester 5 (AI&DS)' },
+      { id: 'sem-aiml-5', prog: progAiml, num: 5, name: 'Semester 5 (AI&ML)' },
+      { id: 'sem-cs-5', prog: progCs, num: 5, name: 'Semester 5 (Cyber Security)' },
+      // Year 4 (Sem 7)
+      { id: 'sem-cse-7', prog: progCse, num: 7, name: 'Semester 7 (CSE)' },
+      { id: 'sem-aids-7', prog: progAids, num: 7, name: 'Semester 7 (AI&DS)' },
+      { id: 'sem-aiml-7', prog: progAiml, num: 7, name: 'Semester 7 (AI&ML)' },
+      { id: 'sem-cs-7', prog: progCs, num: 7, name: 'Semester 7 (Cyber Security)' }
+    ];
 
-    db.prepare('INSERT INTO semesters (id, academic_year_id, program_id, semester_number, name, is_odd) VALUES (?, ?, ?, ?, ?, ?)').run(
-      semCse, ayCurrent, progCse, 3, 'Semester 3 (CSE)', 1
-    );
-    db.prepare('INSERT INTO semesters (id, academic_year_id, program_id, semester_number, name, is_odd) VALUES (?, ?, ?, ?, ?, ?)').run(
-      semAids, ayCurrent, progAids, 3, 'Semester 3 (AI&DS)', 1
-    );
-    db.prepare('INSERT INTO semesters (id, academic_year_id, program_id, semester_number, name, is_odd) VALUES (?, ?, ?, ?, ?, ?)').run(
-      semAiml, ayCurrent, progAiml, 3, 'Semester 3 (AI&ML)', 1
-    );
-    db.prepare('INSERT INTO semesters (id, academic_year_id, program_id, semester_number, name, is_odd) VALUES (?, ?, ?, ?, ?, ?)').run(
-      semCs, ayCurrent, progCs, 3, 'Semester 3 (Cyber Security)', 1
-    );
+    const insertSem = db.prepare('INSERT INTO semesters (id, academic_year_id, program_id, semester_number, name, is_odd) VALUES (?, ?, ?, ?, ?, ?)');
+    semList.forEach(s => insertSem.run(s.id, ayCurrent, s.prog, s.num, s.name, 1));
 
-    // 7. Batches & Sections
-    const batchCse = 'batch-cse-2025';
-    const batchAids = 'batch-aids-2025';
-    const batchAiml = 'batch-aiml-2025';
-    const batchCs = 'batch-cs-2025';
+    // 7. Batches & Sections (All 4 Years)
+    const batchList = [
+      // Year 1
+      { id: 'batch-cse-2026', prog: progCse, name: 'CSE 2026-2030 (Year 1)', year: 2026 },
+      { id: 'batch-aids-2026', prog: progAids, name: 'AI&DS 2026-2030 (Year 1)', year: 2026 },
+      { id: 'batch-aiml-2026', prog: progAiml, name: 'AI&ML 2026-2030 (Year 1)', year: 2026 },
+      { id: 'batch-cs-2026', prog: progCs, name: 'Cyber Security 2026-2030 (Year 1)', year: 2026 },
+      // Year 2
+      { id: 'batch-cse-2025', prog: progCse, name: 'CSE 2025-2029 (Year 2)', year: 2025 },
+      { id: 'batch-aids-2025', prog: progAids, name: 'AI&DS 2025-2029 (Year 2)', year: 2025 },
+      { id: 'batch-aiml-2025', prog: progAiml, name: 'AI&ML 2025-2029 (Year 2)', year: 2025 },
+      { id: 'batch-cs-2025', prog: progCs, name: 'Cyber Security 2025-2029 (Year 2)', year: 2025 },
+      // Year 3
+      { id: 'batch-cse-2024', prog: progCse, name: 'CSE 2024-2028 (Year 3)', year: 2024 },
+      { id: 'batch-aids-2024', prog: progAids, name: 'AI&DS 2024-2028 (Year 3)', year: 2024 },
+      { id: 'batch-aiml-2024', prog: progAiml, name: 'AI&ML 2024-2028 (Year 3)', year: 2024 },
+      { id: 'batch-cs-2024', prog: progCs, name: 'Cyber Security 2024-2028 (Year 3)', year: 2024 },
+      // Year 4
+      { id: 'batch-cse-2023', prog: progCse, name: 'CSE 2023-2027 (Year 4)', year: 2023 },
+      { id: 'batch-aids-2023', prog: progAids, name: 'AI&DS 2023-2027 (Year 4)', year: 2023 },
+      { id: 'batch-aiml-2023', prog: progAiml, name: 'AI&ML 2023-2027 (Year 4)', year: 2023 },
+      { id: 'batch-cs-2023', prog: progCs, name: 'Cyber Security 2023-2027 (Year 4)', year: 2023 }
+    ];
 
-    db.prepare('INSERT INTO batches (id, program_id, academic_year_id, name, start_year, total_students) VALUES (?, ?, ?, ?, ?, ?)').run(
-      batchCse, progCse, ayCurrent, 'CSE 2025-2029', 2025, 180
-    );
-    db.prepare('INSERT INTO batches (id, program_id, academic_year_id, name, start_year, total_students) VALUES (?, ?, ?, ?, ?, ?)').run(
-      batchAids, progAids, ayCurrent, 'AI&DS 2025-2029', 2025, 120
-    );
-    db.prepare('INSERT INTO batches (id, program_id, academic_year_id, name, start_year, total_students) VALUES (?, ?, ?, ?, ?, ?)').run(
-      batchAiml, progAiml, ayCurrent, 'AI&ML 2025-2029', 2025, 120
-    );
-    db.prepare('INSERT INTO batches (id, program_id, academic_year_id, name, start_year, total_students) VALUES (?, ?, ?, ?, ?, ?)').run(
-      batchCs, progCs, ayCurrent, 'Cyber Security 2025-2029', 2025, 120
-    );
+    const insertBatch = db.prepare('INSERT INTO batches (id, program_id, academic_year_id, name, start_year, total_students) VALUES (?, ?, ?, ?, ?, ?)');
+    batchList.forEach(b => insertBatch.run(b.id, b.prog, ayCurrent, b.name, b.year, 120));
 
-    // Requested Sections:
-    // 1. Computer science engineering (sections: CSE-A, CSE-B, CSE-C)
-    // 2. Artificial Intelligence and Data Science (sections: AIDS-A, AIDS-B)
-    // 3. Artificial Intelligence and Machine learning (sections: AIML-A, AIML-B)
-    // 4. Cyber Security (sections: CS-A, CS-B)
     const sectionsData = [
-      { id: 'sec-cse-a', batch: batchCse, sem: semCse, name: 'CSE-A', count: 60 },
-      { id: 'sec-cse-b', batch: batchCse, sem: semCse, name: 'CSE-B', count: 60 },
-      { id: 'sec-cse-c', batch: batchCse, sem: semCse, name: 'CSE-C', count: 60 },
-      { id: 'sec-aids-a', batch: batchAids, sem: semAids, name: 'AIDS-A', count: 60 },
-      { id: 'sec-aids-b', batch: batchAids, sem: semAids, name: 'AIDS-B', count: 60 },
-      { id: 'sec-aiml-a', batch: batchAiml, sem: semAiml, name: 'AIML-A', count: 60 },
-      { id: 'sec-aiml-b', batch: batchAiml, sem: semAiml, name: 'AIML-B', count: 60 },
-      { id: 'sec-cs-a', batch: batchCs, sem: semCs, name: 'CS-A', count: 60 },
-      { id: 'sec-cs-b', batch: batchCs, sem: semCs, name: 'CS-B', count: 60 }
+      // Year 1 Sections
+      { id: 'sec-y1-cse-a', batch: 'batch-cse-2026', sem: 'sem-cse-1', name: 'CSE-A (Y1)', count: 60 },
+      { id: 'sec-y1-cse-b', batch: 'batch-cse-2026', sem: 'sem-cse-1', name: 'CSE-B (Y1)', count: 60 },
+      { id: 'sec-y1-aids-a', batch: 'batch-aids-2026', sem: 'sem-aids-1', name: 'AIDS-A (Y1)', count: 60 },
+      { id: 'sec-y1-aiml-a', batch: 'batch-aiml-2026', sem: 'sem-aiml-1', name: 'AIML-A (Y1)', count: 60 },
+      { id: 'sec-y1-cs-a', batch: 'batch-cs-2026', sem: 'sem-cs-1', name: 'CS-A (Y1)', count: 60 },
+
+      // Year 2 Sections
+      { id: 'sec-cse-a', batch: 'batch-cse-2025', sem: 'sem-cse-3', name: 'CSE-A', count: 60 },
+      { id: 'sec-cse-b', batch: 'batch-cse-2025', sem: 'sem-cse-3', name: 'CSE-B', count: 60 },
+      { id: 'sec-cse-c', batch: 'batch-cse-2025', sem: 'sem-cse-3', name: 'CSE-C', count: 60 },
+      { id: 'sec-aids-a', batch: 'batch-aids-2025', sem: 'sem-aids-3', name: 'AIDS-A', count: 60 },
+      { id: 'sec-aids-b', batch: 'batch-aids-2025', sem: 'sem-aids-3', name: 'AIDS-B', count: 60 },
+      { id: 'sec-aiml-a', batch: 'batch-aiml-2025', sem: 'sem-aiml-3', name: 'AIML-A', count: 60 },
+      { id: 'sec-aiml-b', batch: 'batch-aiml-2025', sem: 'sem-aiml-3', name: 'AIML-B', count: 60 },
+      { id: 'sec-cs-a', batch: 'batch-cs-2025', sem: 'sem-cs-3', name: 'CS-A', count: 60 },
+      { id: 'sec-cs-b', batch: 'batch-cs-2025', sem: 'sem-cs-3', name: 'CS-B', count: 60 },
+
+      // Year 3 Sections
+      { id: 'sec-y3-cse-a', batch: 'batch-cse-2024', sem: 'sem-cse-5', name: 'CSE-A (Y3)', count: 60 },
+      { id: 'sec-y3-cse-b', batch: 'batch-cse-2024', sem: 'sem-cse-5', name: 'CSE-B (Y3)', count: 60 },
+      { id: 'sec-y3-aids-a', batch: 'batch-aids-2024', sem: 'sem-aids-5', name: 'AIDS-A (Y3)', count: 60 },
+      { id: 'sec-y3-aiml-a', batch: 'batch-aiml-2024', sem: 'sem-aiml-5', name: 'AIML-A (Y3)', count: 60 },
+      { id: 'sec-y3-cs-a', batch: 'batch-cs-2024', sem: 'sem-cs-5', name: 'CS-A (Y3)', count: 60 },
+
+      // Year 4 Sections
+      { id: 'sec-y4-cse-a', batch: 'batch-cse-2023', sem: 'sem-cse-7', name: 'CSE-A (Y4)', count: 60 },
+      { id: 'sec-y4-cse-b', batch: 'batch-cse-2023', sem: 'sem-cse-7', name: 'CSE-B (Y4)', count: 60 },
+      { id: 'sec-y4-aids-a', batch: 'batch-aids-2023', sem: 'sem-aids-7', name: 'AIDS-A (Y4)', count: 60 },
+      { id: 'sec-y4-aiml-a', batch: 'batch-aiml-2023', sem: 'sem-aiml-7', name: 'AIML-A (Y4)', count: 60 },
+      { id: 'sec-y4-cs-a', batch: 'batch-cs-2023', sem: 'sem-cs-7', name: 'CS-A (Y4)', count: 60 }
     ];
 
     const insertSec = db.prepare('INSERT INTO sections (id, batch_id, semester_id, name, student_count) VALUES (?, ?, ?, ?, ?)');

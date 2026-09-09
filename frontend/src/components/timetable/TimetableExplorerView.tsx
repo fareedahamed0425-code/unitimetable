@@ -27,7 +27,10 @@ import {
   AlertCircle,
   RefreshCw,
   Database,
-  FileText
+  FileText,
+  Mail,
+  Send,
+  GraduationCap
 } from 'lucide-react';
 import { api } from '../../api';
 import {
@@ -104,6 +107,17 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
   const [uploadErrorMsg, setUploadErrorMsg] = useState('');
   const [uploadSuccessMsg, setUploadSuccessMsg] = useState('');
   const [isResettingDb, setIsResettingDb] = useState(false);
+  const [uploadTargetSectionId, setUploadTargetSectionId] = useState<string>('ALL');
+
+  // Year Selection & Cohort Hierarchy
+  const [selectedYear, setSelectedYear] = useState<number | 'ALL'>('ALL');
+  const [hierarchyYears, setHierarchyYears] = useState<any[]>([]);
+
+  // Email Dispatch State
+  const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);
+  const [isDispatching, setIsDispatching] = useState(false);
+  const [dispatchResult, setDispatchResult] = useState<any | null>(null);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
 
   // Add Session Form state
   const [newSessionDay, setNewSessionDay] = useState<number>(0);
@@ -129,7 +143,11 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
 
   const loadHierarchySections = async () => {
     try {
-      const hier = await api.getHierarchy();
+      const [hier, fullHier] = await Promise.all([
+        api.getHierarchy().catch(() => null),
+        api.getHierarchyFull().catch(() => [])
+      ]);
+      setHierarchyYears(fullHier || []);
       const sList = hier?.sections || [];
       setSections(sList);
       if (sList.length > 0 && !selectedFilterId) {
@@ -596,6 +614,27 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
     }
   };
 
+  // Faculty Email Dispatch Handler
+  const handleDispatchEmails = async () => {
+    setIsDispatching(true);
+    setDispatchError(null);
+    setDispatchResult(null);
+
+    try {
+      const res = await api.dispatchTimetables(timetable?.id || 'tt-active');
+      if (res.success) {
+        setDispatchResult(res);
+      } else {
+        setDispatchError(res.error || 'Failed to dispatch emails.');
+      }
+    } catch (err: any) {
+      console.error('Dispatch error:', err);
+      setDispatchError(err.message || 'Error communicating with email service.');
+    } finally {
+      setIsDispatching(false);
+    }
+  };
+
   // AI Timetable Assistant Handlers
   const handleRunAiEdit = async (customPrompt?: string) => {
     const promptToUse = (customPrompt || aiPrompt).trim();
@@ -606,7 +645,18 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
     setAiAnalysisResult(null);
 
     try {
-      const res = await api.aiTimetableEdit(promptToUse, timetable?.id || 'tt-active');
+      // Build context string if section or year is filtered
+      let contextSuffix = '';
+      if (selectedYear !== 'ALL') {
+        contextSuffix += ` [Context: Scope is Year ${selectedYear}]`;
+      }
+      if (filterType === 'SECTION' && selectedFilterId) {
+        const sec = sections.find(s => s.id === selectedFilterId);
+        if (sec) contextSuffix += ` [Context: Active section is ${sec.name}]`;
+      }
+      const fullPrompt = promptToUse + (contextSuffix ? ` ${contextSuffix}` : '');
+
+      const res = await api.aiTimetableEdit(fullPrompt, timetable?.id || 'tt-active');
       if (res.success && res.data) {
         setAiAnalysisResult(res.data);
       } else {
@@ -680,6 +730,44 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
 
   return (
     <div className="space-y-4 max-w-full">
+      {/* 4-Year Academic Cohort Selector Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-gradient-to-r from-[#002E4E] via-[#003B64] to-[#1B6680] text-white shadow-sm border border-[#2582A1]/30">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-[#E6C200]/20 border border-[#E6C200]/40 flex items-center justify-center">
+            <GraduationCap className="w-4 h-4 text-[#E6C200]" />
+          </div>
+          <div>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-100">Academic Year Scope:</span>
+            <span className="text-[11px] text-slate-300 ml-2 hidden sm:inline">Focus grid & class cohorts by undergraduate year</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          {(['ALL', 1, 2, 3, 4] as const).map(yr => (
+            <button
+              key={yr}
+              onClick={() => {
+                setSelectedYear(yr);
+                if (yr !== 'ALL' && hierarchyYears.length > 0) {
+                  const targetYearData = hierarchyYears.find(h => h.year === yr);
+                  const yrSections = targetYearData?.departments?.flatMap((d: any) => d.sections) || [];
+                  if (yrSections.length > 0) {
+                    setSelectedFilterId(yrSections[0].id);
+                  }
+                }
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                selectedYear === yr
+                  ? 'bg-[#E6C200] text-[#002E4E] shadow-sm scale-105'
+                  : 'bg-white/10 text-slate-200 hover:bg-white/20 border border-white/15'
+              }`}
+            >
+              {yr === 'ALL' ? '🌐 All Years (1–4)' : `Year ${yr} (${yr === 1 ? '1st' : yr === 2 ? '2nd' : yr === 3 ? '3rd' : '4th'})`}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Control Bar: Swiss Filter Suite & Actions */}
       <div className="lux-card p-3 sm:p-3.5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 bg-white border-[#D8E6ED]">
         {/* Left: Filter Controls */}
@@ -715,9 +803,12 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
                 value={selectedFilterId}
                 onChange={e => setSelectedFilterId(e.target.value)}
               >
-                {sections.map(s => (
+                {(selectedYear === 'ALL'
+                  ? sections
+                  : (hierarchyYears.find(h => h.year === selectedYear)?.departments?.flatMap((d: any) => d.sections) || sections)
+                ).map((s: any) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} ({s.student_count || 60} students)
+                    {s.name} ({s.student_count || s.studentCount || 60} students)
                   </option>
                 ))}
               </select>
@@ -760,7 +851,7 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
           )}
         </div>
 
-        {/* Right: AI Assistant, Upload Timetable, Add Session, Manage Timetables, Export Suite */}
+        {/* Right: AI Assistant, Email Dispatch, Upload Timetable, Add Session, Manage Timetables, Export Suite */}
         <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-start lg:justify-end">
           {/* AI Timetable Assistant Button */}
           <button
@@ -774,6 +865,20 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
           >
             <Sparkles className="w-3.5 h-3.5 text-[#E6C200] animate-pulse" />
             <span>AI Assistant</span>
+          </button>
+
+          {/* Faculty Email Dispatch Button */}
+          <button
+            onClick={() => {
+              setDispatchError(null);
+              setDispatchResult(null);
+              setIsDispatchModalOpen(true);
+            }}
+            className="lux-btn text-xs py-1.5 px-3 bg-emerald-700 hover:bg-emerald-600 text-white flex items-center gap-1.5 rounded-lg shadow-xs font-bold transition-all hover:scale-[1.02] border border-emerald-500/40"
+            title="Dispatch personal weekly timetables to faculty members via Outlook SMTP"
+          >
+            <Mail className="w-3.5 h-3.5 text-emerald-200" />
+            <span>Dispatch to Faculty</span>
           </button>
 
           {/* Upload Timetable Button */}
@@ -1840,6 +1945,26 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
               </div>
             </div>
 
+            {/* Target Section Scope */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-[#F4F8FA] border border-[#D8E6ED] rounded-xl text-xs">
+              <div>
+                <span className="font-bold text-[#002E4E] block">Upload Scope / Section Targeting:</span>
+                <span className="text-[11px] text-[#4A6375]">Import across all sections or assign sessions to a specific section</span>
+              </div>
+              <select
+                value={uploadTargetSectionId}
+                onChange={e => setUploadTargetSectionId(e.target.value)}
+                className="lux-select text-xs py-1.5 px-3 bg-white border border-[#D8E6ED] font-semibold text-[#002E4E] rounded-lg"
+              >
+                <option value="ALL">🌐 Multi-Class / All Sections (Auto-Detect)</option>
+                {sections.map(s => (
+                  <option key={s.id} value={s.id}>
+                    Single Class: {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Drag & Drop File Picker */}
             <div
               onDragOver={(e) => e.preventDefault()}
@@ -2236,6 +2361,122 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 5.C FACULTY EMAIL DISPATCH MODAL (OUTLOOK SMTP) */}
+      {isDispatchModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-[#D8E6ED] shadow-2xl max-w-xl w-full p-6 space-y-5 animate-scaleUp">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-[#D8E6ED] pb-3.5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-600">
+                  <Mail className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#002E4E]">Faculty Timetable Dispatch</h3>
+                  <p className="text-xs text-[#4A6375]">
+                    Email personalized weekly class schedules to all instructors via Outlook SMTP
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsDispatchModalOpen(false)}
+                className="p-1.5 rounded-lg text-[#4A6375] hover:text-[#002E4E] hover:bg-[#F4F8FA]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Info Cards */}
+            <div className="space-y-3 text-xs">
+              <div className="p-3.5 rounded-xl bg-[#F4F8FA] border border-[#D8E6ED] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-[#002E4E]">Active Timetable:</span>
+                  <span className="font-bold text-[#2582A1]">{timetable?.name || 'Active Academic Routine'}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-[#002E4E]">Target Faculty Members:</span>
+                  <span className="font-bold text-emerald-700">{teachers.length} Instructors</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-[#002E4E]">Outgoing Protocol:</span>
+                  <span className="font-mono text-[11px] text-slate-600">Microsoft Outlook SMTP (Port 587 TLS)</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200/80 text-blue-900 text-[11px] leading-relaxed">
+                ℹ️ Each faculty member will receive a clean HTML email containing their individual 6-day weekly schedule, assigned rooms, courses, and class hours. Faculty without configured email addresses will be reported.
+              </div>
+
+              {/* Status feedback */}
+              {dispatchError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                  <span>{dispatchError}</span>
+                </div>
+              )}
+
+              {dispatchResult && (
+                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 space-y-2 text-xs">
+                  <div className="flex items-center gap-2 text-emerald-800 font-bold text-sm">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>Timetable Dispatch Complete</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 pt-1 text-center">
+                    <div className="p-2 bg-white rounded-lg border border-emerald-100">
+                      <div className="text-[10px] text-slate-500 font-semibold">Sent</div>
+                      <div className="text-base font-bold text-emerald-700">{dispatchResult.sentCount || 0}</div>
+                    </div>
+                    <div className="p-2 bg-white rounded-lg border border-emerald-100">
+                      <div className="text-[10px] text-slate-500 font-semibold">Skipped (No Email)</div>
+                      <div className="text-base font-bold text-amber-600">{dispatchResult.skippedCount || 0}</div>
+                    </div>
+                    <div className="p-2 bg-white rounded-lg border border-emerald-100">
+                      <div className="text-[10px] text-slate-500 font-semibold">Failed</div>
+                      <div className="text-base font-bold text-rose-600">{dispatchResult.failedCount || 0}</div>
+                    </div>
+                  </div>
+                  {dispatchResult.message && (
+                    <p className="text-[11px] text-emerald-700 pt-1">{dispatchResult.message}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#D8E6ED]">
+              <button
+                type="button"
+                onClick={() => setIsDispatchModalOpen(false)}
+                className="lux-btn text-xs py-2 px-4 bg-white border border-[#D8E6ED] hover:bg-[#F4F8FA] text-[#4A6375] rounded-xl font-semibold"
+              >
+                {dispatchResult ? 'Close' : 'Cancel'}
+              </button>
+
+              {!dispatchResult && (
+                <button
+                  type="button"
+                  onClick={handleDispatchEmails}
+                  disabled={isDispatching}
+                  className="lux-btn text-xs py-2 px-5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-xl font-bold flex items-center gap-2 shadow-sm disabled:opacity-50"
+                >
+                  {isDispatching ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Sending Outlook Emails...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Dispatch All Schedules</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

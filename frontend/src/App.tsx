@@ -20,6 +20,7 @@ import { FETInteroperabilityView } from './components/fet/FETInteroperabilityVie
 import { PublishingAndAuditView } from './components/governance/PublishingAndAuditView';
 import { RoleProfileRouter } from './components/roles/RoleProfileRouter';
 import { UserManagementView } from './components/roles/UserManagementView';
+import { AcademicSettingsView } from './components/AcademicSettingsView';
 import { AuthPage } from './components/auth/AuthPage';
 import { NotFoundPage } from './components/common/NotFoundPage';
 import { api } from './api';
@@ -374,6 +375,10 @@ export const App: React.FC = () => {
               currentUser={currentUser}
               onRefresh={handleRefreshData}
             />
+          )}
+
+          {currentSection === 'settings' && (
+            <AcademicSettingsView />
           )}
         </main>
       </div>

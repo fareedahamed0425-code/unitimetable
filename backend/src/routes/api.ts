@@ -15,6 +15,7 @@ import { NLPTimetableEditor } from '../nlp/nlpTimetableEditor';
 import { hashPassword, verifyPassword, generateAuthToken } from '../utils/auth';
 import { seedDatabase } from '../db/seed';
 import { seedPostgres } from '../db/seed_postgres';
+import { dispatchTimetablesToFaculty } from '../email/emailDispatcher';
 
 import {
   Activity,
@@ -2393,3 +2394,322 @@ apiRouter.post('/timetables/ai-apply-changes', async (req: Request, res: Respons
   }
 });
 
+// ============================================================
+// 15. EMAIL DISPATCH — Send timetables to all faculty
+// ============================================================
+apiRouter.post('/admin/dispatch-timetables', async (req: Request, res: Response) => {
+  try {
+    const { timetableId = 'tt-active' } = req.body;
+
+    const teachers = db.prepare('SELECT id, name, email FROM teachers').all() as any[];
+    const entriesRaw = db.prepare('SELECT * FROM timetable_entries WHERE timetable_id = ?').all(timetableId) as any[];
+    const activities = db.prepare('SELECT * FROM activities').all() as any[];
+    const actTeachers = db.prepare('SELECT * FROM activity_teacher_assignments').all() as any[];
+    const actSections = db.prepare('SELECT activity_id, s.name as section_name FROM activity_student_assignments asa LEFT JOIN sections s ON s.id = asa.section_id').all() as any[];
+    const courses = db.prepare('SELECT id, code, name FROM courses').all() as any[];
+    const rooms = db.prepare('SELECT id, code FROM rooms').all() as any[];
+
+    const actMap = new Map(activities.map((a: any) => [a.id, a]));
+    const courseMap = new Map(courses.map((c: any) => [c.id, c]));
+    const roomMap = new Map(rooms.map((r: any) => [r.id, r]));
+
+    // Build per-teacher session lists
+    const teacherSessions = new Map<string, any[]>();
+    for (const teacher of teachers) {
+      const myActivityIds = actTeachers.filter((at: any) => at.teacher_id === teacher.id).map((at: any) => at.activity_id);
+      const myEntries = entriesRaw.filter((e: any) => myActivityIds.includes(e.activity_id));
+
+      const sessions = myEntries.map((e: any) => {
+        const act = actMap.get(e.activity_id);
+        const course = act ? courseMap.get(act.course_id) : null;
+        const room = roomMap.get(e.room_id);
+        const sectionNames = actSections.filter((as: any) => as.activity_id === e.activity_id).map((as: any) => as.section_name || 'Unknown').filter(Boolean);
+        return {
+          dayOfWeek: e.day_of_week,
+          periodIndex: e.period_index,
+          courseName: course?.name || act?.name || 'Session',
+          courseCode: course?.code || 'N/A',
+          sectionNames: sectionNames.length > 0 ? sectionNames : ['TBD'],
+          roomCode: room?.code || 'TBD',
+          activityType: act?.activity_type || 'LECTURE',
+          duration: e.duration || 1
+        };
+      });
+
+      teacherSessions.set(teacher.id, sessions);
+    }
+
+    const payloads = teachers.map((t: any) => ({
+      teacherId: t.id,
+      teacherName: t.name,
+      teacherEmail: t.email,
+      sessions: teacherSessions.get(t.id) || []
+    }));
+
+    const result = await dispatchTimetablesToFaculty(payloads);
+
+    res.json({ success: true, data: result });
+  } catch (err: any) {
+    console.error('Dispatch timetables error:', err);
+    res.status(500).json({ success: false, error: err.message || 'Failed to dispatch timetables' });
+  }
+});
+
+// ============================================================
+// 16. TIME SLOTS CRUD (Admin Editable Periods)
+// ============================================================
+apiRouter.get('/admin/calendar/slots', (req: Request, res: Response) => {
+  try {
+    const slots = db.prepare('SELECT * FROM time_slots ORDER BY day_of_week, period_index').all();
+    res.json({ success: true, data: slots });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+apiRouter.put('/admin/calendar/slots/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { start_time, end_time, label, is_break } = req.body;
+    db.prepare('UPDATE time_slots SET start_time=?, end_time=?, label=?, is_break=? WHERE id=?')
+      .run(start_time, end_time, label, is_break ? 1 : 0, id);
+    await writeThroughPg('UPDATE time_slots SET start_time=$1, end_time=$2, label=$3, is_break=$4 WHERE id=$5',
+      [start_time, end_time, label, is_break ? 1 : 0, id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+apiRouter.post('/admin/calendar/slots', async (req: Request, res: Response) => {
+  try {
+    const { day_of_week, day_name, period_index, start_time, end_time, label, is_break } = req.body;
+    const id = `slot-${day_of_week}-${period_index}-${Date.now()}`;
+    db.prepare('INSERT INTO time_slots (id, day_of_week, day_name, period_index, start_time, end_time, is_break, label) VALUES (?,?,?,?,?,?,?,?)')
+      .run(id, day_of_week, day_name, period_index, start_time, end_time, is_break ? 1 : 0, label);
+    await writeThroughPg('INSERT INTO time_slots (id, day_of_week, day_name, period_index, start_time, end_time, is_break, label) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [id, day_of_week, day_name, period_index, start_time, end_time, is_break ? 1 : 0, label]);
+    res.json({ success: true, id });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+apiRouter.delete('/admin/calendar/slots/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    db.prepare('DELETE FROM time_slots WHERE id=?').run(id);
+    await writeThroughPg('DELETE FROM time_slots WHERE id=$1', [id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================
+// 17. ROOMS + BUILDINGS CRUD
+// ============================================================
+apiRouter.get('/admin/rooms', (req: Request, res: Response) => {
+  try {
+    const rooms = db.prepare('SELECT r.*, b.name as building_name FROM rooms r LEFT JOIN buildings b ON b.id=r.building_id ORDER BY b.name, r.code').all();
+    const buildings = db.prepare('SELECT * FROM buildings').all();
+    res.json({ success: true, data: { rooms, buildings } });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+apiRouter.post('/admin/rooms', async (req: Request, res: Response) => {
+  try {
+    const { building_id, name, code, floor, capacity, room_type, is_accessible, department_id } = req.body;
+    const id = `room-${code.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Date.now()}`;
+    db.prepare('INSERT INTO rooms (id, building_id, name, code, floor, capacity, room_type, is_accessible, department_id) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run(id, building_id, name, code, floor || 1, capacity || 60, room_type || 'CLASSROOM', is_accessible ? 1 : 1, department_id || null);
+    await writeThroughPg('INSERT INTO rooms (id, building_id, name, code, floor, capacity, room_type, is_accessible, department_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+      [id, building_id, name, code, floor || 1, capacity || 60, room_type || 'CLASSROOM', 1, department_id || null]);
+    res.json({ success: true, id });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+apiRouter.put('/admin/rooms/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name, code, floor, capacity, room_type, is_accessible, department_id, building_id } = req.body;
+    db.prepare('UPDATE rooms SET name=?, code=?, floor=?, capacity=?, room_type=?, is_accessible=?, department_id=?, building_id=? WHERE id=?')
+      .run(name, code, floor, capacity, room_type, is_accessible ? 1 : 0, department_id || null, building_id, id);
+    await writeThroughPg('UPDATE rooms SET name=$1, code=$2, floor=$3, capacity=$4, room_type=$5, is_accessible=$6, department_id=$7, building_id=$8 WHERE id=$9',
+      [name, code, floor, capacity, room_type, is_accessible ? 1 : 0, department_id || null, building_id, id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+apiRouter.delete('/admin/rooms/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    db.prepare('DELETE FROM rooms WHERE id=?').run(id);
+    await writeThroughPg('DELETE FROM rooms WHERE id=$1', [id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+apiRouter.post('/admin/buildings', async (req: Request, res: Response) => {
+  try {
+    const { name, code, total_floors } = req.body;
+    const campus = (db.prepare('SELECT id FROM campuses LIMIT 1').get() as any)?.id || 'camp-main';
+    const id = `bld-${code.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Date.now()}`;
+    db.prepare('INSERT INTO buildings (id, campus_id, name, code, total_floors) VALUES (?,?,?,?,?)')
+      .run(id, campus, name, code, total_floors || 3);
+    await writeThroughPg('INSERT INTO buildings (id, campus_id, name, code, total_floors) VALUES ($1,$2,$3,$4,$5)',
+      [id, campus, name, code, total_floors || 3]);
+    res.json({ success: true, id });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+apiRouter.delete('/admin/buildings/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    db.prepare('DELETE FROM buildings WHERE id=?').run(id);
+    await writeThroughPg('DELETE FROM buildings WHERE id=$1', [id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================
+// 18. SECTIONS + COHORTS CRUD (Year-aware)
+// ============================================================
+apiRouter.get('/admin/cohorts', (req: Request, res: Response) => {
+  try {
+    const sections = db.prepare(`
+      SELECT s.*, b.name as batch_name, b.start_year, sem.semester_number, sem.name as semester_name,
+             p.name as program_name, p.code as program_code, d.name as dept_name, d.code as dept_code
+      FROM sections s
+      LEFT JOIN batches b ON b.id = s.batch_id
+      LEFT JOIN semesters sem ON sem.id = s.semester_id
+      LEFT JOIN programs p ON p.id = b.program_id
+      LEFT JOIN departments d ON d.id = p.department_id
+      ORDER BY d.code, sem.semester_number, s.name
+    `).all();
+    const batches = db.prepare(`
+      SELECT b.*, p.name as program_name, p.code as program_code, d.name as dept_name, d.code as dept_code
+      FROM batches b
+      LEFT JOIN programs p ON p.id = b.program_id
+      LEFT JOIN departments d ON d.id = p.department_id
+      ORDER BY b.start_year DESC
+    `).all();
+    const semesters = db.prepare(`
+      SELECT sem.*, p.name as program_name, p.code as program_code
+      FROM semesters sem LEFT JOIN programs p ON p.id = sem.program_id
+      ORDER BY sem.semester_number
+    `).all();
+    const programs = db.prepare('SELECT * FROM programs').all();
+    const departments = db.prepare('SELECT * FROM departments').all();
+    res.json({ success: true, data: { sections, batches, semesters, programs, departments } });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+apiRouter.post('/admin/sections', async (req: Request, res: Response) => {
+  try {
+    const { name, batch_id, semester_id, student_count } = req.body;
+    const id = `sec-${name.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Date.now()}`;
+    db.prepare('INSERT INTO sections (id, batch_id, semester_id, name, student_count) VALUES (?,?,?,?,?)')
+      .run(id, batch_id, semester_id, name, student_count || 60);
+    await writeThroughPg('INSERT INTO sections (id, batch_id, semester_id, name, student_count) VALUES ($1,$2,$3,$4,$5)',
+      [id, batch_id, semester_id, name, student_count || 60]);
+    res.json({ success: true, id });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+apiRouter.put('/admin/sections/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name, student_count, batch_id, semester_id } = req.body;
+    db.prepare('UPDATE sections SET name=?, student_count=?, batch_id=?, semester_id=? WHERE id=?')
+      .run(name, student_count, batch_id, semester_id, id);
+    await writeThroughPg('UPDATE sections SET name=$1, student_count=$2, batch_id=$3, semester_id=$4 WHERE id=$5',
+      [name, student_count, batch_id, semester_id, id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+apiRouter.delete('/admin/sections/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    db.prepare('DELETE FROM sections WHERE id=?').run(id);
+    await writeThroughPg('DELETE FROM sections WHERE id=$1', [id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Add new batch/year
+apiRouter.post('/admin/batches', async (req: Request, res: Response) => {
+  try {
+    const { program_id, academic_year_id, name, start_year, total_students } = req.body;
+    const id = `batch-${program_id.replace('prog-', '')}-${start_year}-${Date.now()}`;
+    db.prepare('INSERT INTO batches (id, program_id, academic_year_id, name, start_year, total_students) VALUES (?,?,?,?,?,?)')
+      .run(id, program_id, academic_year_id, name, start_year, total_students || 60);
+    await writeThroughPg('INSERT INTO batches (id, program_id, academic_year_id, name, start_year, total_students) VALUES ($1,$2,$3,$4,$5,$6)',
+      [id, program_id, academic_year_id, name, start_year, total_students || 60]);
+    res.json({ success: true, id });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Add new semester for a program+year
+apiRouter.post('/admin/semesters', async (req: Request, res: Response) => {
+  try {
+    const { academic_year_id, program_id, semester_number, name, is_odd } = req.body;
+    const id = `sem-${program_id.replace('prog-', '')}-${semester_number}-${Date.now()}`;
+    db.prepare('INSERT INTO semesters (id, academic_year_id, program_id, semester_number, name, is_odd) VALUES (?,?,?,?,?,?)')
+      .run(id, academic_year_id, program_id, semester_number, name, is_odd ? 1 : 0);
+    await writeThroughPg('INSERT INTO semesters (id, academic_year_id, program_id, semester_number, name, is_odd) VALUES ($1,$2,$3,$4,$5,$6)',
+      [id, academic_year_id, program_id, semester_number, name, is_odd ? 1 : 0]);
+    res.json({ success: true, id });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Full hierarchy for year-based timetable navigation
+apiRouter.get('/admin/hierarchy/full', (req: Request, res: Response) => {
+  try {
+    const sections = db.prepare(`
+      SELECT s.id, s.name, s.student_count,
+             b.start_year, b.id as batch_id,
+             sem.semester_number,
+             CASE WHEN sem.semester_number <= 2 THEN 1
+                  WHEN sem.semester_number <= 4 THEN 2
+                  WHEN sem.semester_number <= 6 THEN 3
+                  ELSE 4 END as year_number,
+             d.id as dept_id, d.name as dept_name, d.code as dept_code
+      FROM sections s
+      LEFT JOIN batches b ON b.id=s.batch_id
+      LEFT JOIN semesters sem ON sem.id=s.semester_id
+      LEFT JOIN programs p ON p.id=b.program_id
+      LEFT JOIN departments d ON d.id=p.department_id
+      ORDER BY d.code, year_number, s.name
+    `).all();
+    const academicYear = db.prepare('SELECT * FROM academic_years WHERE is_current=1 LIMIT 1').get();
+    res.json({ success: true, data: { sections, academicYear } });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});

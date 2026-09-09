@@ -144,7 +144,7 @@ export async function seedPostgres(force = true): Promise<void> {
       [progCse, deptCse, progAids, deptAids, progAiml, deptAiml, progCs, deptCs]
     );
 
-    // 5. Academic Year & Semesters
+    // 5. Academic Year & Semesters (All 4 Years)
     const ayCurrent = 'ay-2026-2027';
     await client.query(
       `INSERT INTO academic_years (id, university_id, name, start_date, end_date, is_current)
@@ -153,47 +153,104 @@ export async function seedPostgres(force = true): Promise<void> {
       [ayCurrent, univId]
     );
 
-    const semCse = 'sem-cse-3';
-    const semAids = 'sem-aids-3';
-    const semAiml = 'sem-aiml-3';
-    const semCs = 'sem-cs-3';
+    // Semesters for Years 1, 2, 3, 4
+    const semestersList = [
+      // Year 1 (Sem 1)
+      { id: 'sem-cse-1', progId: progCse, semNum: 1, name: 'Semester 1 (CSE)' },
+      { id: 'sem-aids-1', progId: progAids, semNum: 1, name: 'Semester 1 (AI&DS)' },
+      { id: 'sem-aiml-1', progId: progAiml, semNum: 1, name: 'Semester 1 (AI&ML)' },
+      { id: 'sem-cs-1', progId: progCs, semNum: 1, name: 'Semester 1 (Cyber Security)' },
+      // Year 2 (Sem 3)
+      { id: 'sem-cse-3', progId: progCse, semNum: 3, name: 'Semester 3 (CSE)' },
+      { id: 'sem-aids-3', progId: progAids, semNum: 3, name: 'Semester 3 (AI&DS)' },
+      { id: 'sem-aiml-3', progId: progAiml, semNum: 3, name: 'Semester 3 (AI&ML)' },
+      { id: 'sem-cs-3', progId: progCs, semNum: 3, name: 'Semester 3 (Cyber Security)' },
+      // Year 3 (Sem 5)
+      { id: 'sem-cse-5', progId: progCse, semNum: 5, name: 'Semester 5 (CSE)' },
+      { id: 'sem-aids-5', progId: progAids, semNum: 5, name: 'Semester 5 (AI&DS)' },
+      { id: 'sem-aiml-5', progId: progAiml, semNum: 5, name: 'Semester 5 (AI&ML)' },
+      { id: 'sem-cs-5', progId: progCs, semNum: 5, name: 'Semester 5 (Cyber Security)' },
+      // Year 4 (Sem 7)
+      { id: 'sem-cse-7', progId: progCse, semNum: 7, name: 'Semester 7 (CSE)' },
+      { id: 'sem-aids-7', progId: progAids, semNum: 7, name: 'Semester 7 (AI&DS)' },
+      { id: 'sem-aiml-7', progId: progAiml, semNum: 7, name: 'Semester 7 (AI&ML)' },
+      { id: 'sem-cs-7', progId: progCs, semNum: 7, name: 'Semester 7 (Cyber Security)' }
+    ];
 
-    await client.query(
-      `INSERT INTO semesters (id, academic_year_id, program_id, semester_number, name, is_odd) VALUES 
-       ($1, $2, $3, 3, 'Semester 3 (CSE)', 1),
-       ($4, $2, $5, 3, 'Semester 3 (AI&DS)', 1),
-       ($6, $2, $7, 3, 'Semester 3 (AI&ML)', 1),
-       ($8, $2, $9, 3, 'Semester 3 (Cyber Security)', 1)
-       ON CONFLICT (id) DO NOTHING`,
-      [semCse, ayCurrent, progCse, semAids, progAids, semAiml, progAiml, semCs, progCs]
-    );
+    for (const sem of semestersList) {
+      await client.query(
+        `INSERT INTO semesters (id, academic_year_id, program_id, semester_number, name, is_odd)
+         VALUES ($1, $2, $3, $4, $5, 1)
+         ON CONFLICT (id) DO NOTHING`,
+        [sem.id, ayCurrent, sem.progId, sem.semNum, sem.name]
+      );
+    }
 
-    // 6. Batches & Sections
-    const batchCse = 'batch-cse-2025';
-    const batchAids = 'batch-aids-2025';
-    const batchAiml = 'batch-aiml-2025';
-    const batchCs = 'batch-cs-2025';
+    // 6. Batches (All 4 Years)
+    const batchesList = [
+      // Year 1 (Batch 2026)
+      { id: 'batch-cse-2026', progId: progCse, name: 'CSE 2026-2030 (Year 1)', startYear: 2026 },
+      { id: 'batch-aids-2026', progId: progAids, name: 'AI&DS 2026-2030 (Year 1)', startYear: 2026 },
+      { id: 'batch-aiml-2026', progId: progAiml, name: 'AI&ML 2026-2030 (Year 1)', startYear: 2026 },
+      { id: 'batch-cs-2026', progId: progCs, name: 'Cyber Security 2026-2030 (Year 1)', startYear: 2026 },
+      // Year 2 (Batch 2025)
+      { id: 'batch-cse-2025', progId: progCse, name: 'CSE 2025-2029 (Year 2)', startYear: 2025 },
+      { id: 'batch-aids-2025', progId: progAids, name: 'AI&DS 2025-2029 (Year 2)', startYear: 2025 },
+      { id: 'batch-aiml-2025', progId: progAiml, name: 'AI&ML 2025-2029 (Year 2)', startYear: 2025 },
+      { id: 'batch-cs-2025', progId: progCs, name: 'Cyber Security 2025-2029 (Year 2)', startYear: 2025 },
+      // Year 3 (Batch 2024)
+      { id: 'batch-cse-2024', progId: progCse, name: 'CSE 2024-2028 (Year 3)', startYear: 2024 },
+      { id: 'batch-aids-2024', progId: progAids, name: 'AI&DS 2024-2028 (Year 3)', startYear: 2024 },
+      { id: 'batch-aiml-2024', progId: progAiml, name: 'AI&ML 2024-2028 (Year 3)', startYear: 2024 },
+      { id: 'batch-cs-2024', progId: progCs, name: 'Cyber Security 2024-2028 (Year 3)', startYear: 2024 },
+      // Year 4 (Batch 2023)
+      { id: 'batch-cse-2023', progId: progCse, name: 'CSE 2023-2027 (Year 4)', startYear: 2023 },
+      { id: 'batch-aids-2023', progId: progAids, name: 'AI&DS 2023-2027 (Year 4)', startYear: 2023 },
+      { id: 'batch-aiml-2023', progId: progAiml, name: 'AI&ML 2023-2027 (Year 4)', startYear: 2023 },
+      { id: 'batch-cs-2023', progId: progCs, name: 'Cyber Security 2023-2027 (Year 4)', startYear: 2023 }
+    ];
 
-    await client.query(
-      `INSERT INTO batches (id, program_id, academic_year_id, name, start_year, total_students) VALUES 
-       ($1, $2, $3, 'CSE 2025-2029', 2025, 180),
-       ($4, $5, $3, 'AI&DS 2025-2029', 2025, 120),
-       ($6, $7, $3, 'AI&ML 2025-2029', 2025, 120),
-       ($8, $9, $3, 'Cyber Security 2025-2029', 2025, 120)
-       ON CONFLICT (id) DO NOTHING`,
-      [batchCse, progCse, ayCurrent, batchAids, progAids, batchAiml, progAiml, batchCs, progCs]
-    );
+    for (const b of batchesList) {
+      await client.query(
+        `INSERT INTO batches (id, program_id, academic_year_id, name, start_year, total_students)
+         VALUES ($1, $2, $3, $4, $5, 120)
+         ON CONFLICT (id) DO NOTHING`,
+        [b.id, b.progId, ayCurrent, b.name, b.startYear]
+      );
+    }
 
     const sections = [
-      { id: 'sec-cse-a', batchId: batchCse, semId: semCse, name: 'CSE-A', count: 60 },
-      { id: 'sec-cse-b', batchId: batchCse, semId: semCse, name: 'CSE-B', count: 60 },
-      { id: 'sec-cse-c', batchId: batchCse, semId: semCse, name: 'CSE-C', count: 60 },
-      { id: 'sec-aids-a', batchId: batchAids, semId: semAids, name: 'AIDS-A', count: 60 },
-      { id: 'sec-aids-b', batchId: batchAids, semId: semAids, name: 'AIDS-B', count: 60 },
-      { id: 'sec-aiml-a', batchId: batchAiml, semId: semAiml, name: 'AIML-A', count: 60 },
-      { id: 'sec-aiml-b', batchId: batchAiml, semId: semAiml, name: 'AIML-B', count: 60 },
-      { id: 'sec-cs-a', batchId: batchCs, semId: semCs, name: 'CS-A', count: 60 },
-      { id: 'sec-cs-b', batchId: batchCs, semId: semCs, name: 'CS-B', count: 60 }
+      // Year 1 Sections
+      { id: 'sec-y1-cse-a', batchId: 'batch-cse-2026', semId: 'sem-cse-1', name: 'CSE-A (Y1)', count: 60 },
+      { id: 'sec-y1-cse-b', batchId: 'batch-cse-2026', semId: 'sem-cse-1', name: 'CSE-B (Y1)', count: 60 },
+      { id: 'sec-y1-aids-a', batchId: 'batch-aids-2026', semId: 'sem-aids-1', name: 'AIDS-A (Y1)', count: 60 },
+      { id: 'sec-y1-aiml-a', batchId: 'batch-aiml-2026', semId: 'sem-aiml-1', name: 'AIML-A (Y1)', count: 60 },
+      { id: 'sec-y1-cs-a', batchId: 'batch-cs-2026', semId: 'sem-cs-1', name: 'CS-A (Y1)', count: 60 },
+
+      // Year 2 Sections (Existing standard sections)
+      { id: 'sec-cse-a', batchId: 'batch-cse-2025', semId: 'sem-cse-3', name: 'CSE-A', count: 60 },
+      { id: 'sec-cse-b', batchId: 'batch-cse-2025', semId: 'sem-cse-3', name: 'CSE-B', count: 60 },
+      { id: 'sec-cse-c', batchId: 'batch-cse-2025', semId: 'sem-cse-3', name: 'CSE-C', count: 60 },
+      { id: 'sec-aids-a', batchId: 'batch-aids-2025', semId: 'sem-aids-3', name: 'AIDS-A', count: 60 },
+      { id: 'sec-aids-b', batchId: 'batch-aids-2025', semId: 'sem-aids-3', name: 'AIDS-B', count: 60 },
+      { id: 'sec-aiml-a', batchId: 'batch-aiml-2025', semId: 'sem-aiml-3', name: 'AIML-A', count: 60 },
+      { id: 'sec-aiml-b', batchId: 'batch-aiml-2025', semId: 'sem-aiml-3', name: 'AIML-B', count: 60 },
+      { id: 'sec-cs-a', batchId: 'batch-cs-2025', semId: 'sem-cs-3', name: 'CS-A', count: 60 },
+      { id: 'sec-cs-b', batchId: 'batch-cs-2025', semId: 'sem-cs-3', name: 'CS-B', count: 60 },
+
+      // Year 3 Sections
+      { id: 'sec-y3-cse-a', batchId: 'batch-cse-2024', semId: 'sem-cse-5', name: 'CSE-A (Y3)', count: 60 },
+      { id: 'sec-y3-cse-b', batchId: 'batch-cse-2024', semId: 'sem-cse-5', name: 'CSE-B (Y3)', count: 60 },
+      { id: 'sec-y3-aids-a', batchId: 'batch-aids-2024', semId: 'sem-aids-5', name: 'AIDS-A (Y3)', count: 60 },
+      { id: 'sec-y3-aiml-a', batchId: 'batch-aiml-2024', semId: 'sem-aiml-5', name: 'AIML-A (Y3)', count: 60 },
+      { id: 'sec-y3-cs-a', batchId: 'batch-cs-2024', semId: 'sem-cs-5', name: 'CS-A (Y3)', count: 60 },
+
+      // Year 4 Sections
+      { id: 'sec-y4-cse-a', batchId: 'batch-cse-2023', semId: 'sem-cse-7', name: 'CSE-A (Y4)', count: 60 },
+      { id: 'sec-y4-cse-b', batchId: 'batch-cse-2023', semId: 'sem-cse-7', name: 'CSE-B (Y4)', count: 60 },
+      { id: 'sec-y4-aids-a', batchId: 'batch-aids-2023', semId: 'sem-aids-7', name: 'AIDS-A (Y4)', count: 60 },
+      { id: 'sec-y4-aiml-a', batchId: 'batch-aiml-2023', semId: 'sem-aiml-7', name: 'AIML-A (Y4)', count: 60 },
+      { id: 'sec-y4-cs-a', batchId: 'batch-cs-2023', semId: 'sem-cs-7', name: 'CS-A (Y4)', count: 60 }
     ];
 
     for (const sec of sections) {

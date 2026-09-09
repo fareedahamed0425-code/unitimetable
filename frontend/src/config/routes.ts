@@ -37,7 +37,8 @@ export const SECTION_TO_SLUG: Record<NavSection, string> = {
   fet: 'fet',
   publishing: 'publishing',
   audit: 'audit',
-  users: 'users'
+  users: 'users',
+  settings: 'settings'
 };
 
 export const SLUG_TO_SECTION: Record<string, NavSection> = {
@@ -72,5 +73,7 @@ export const SLUG_TO_SECTION: Record<string, NavSection> = {
   users: 'users',
   accounts: 'users',
   roles: 'users',
-  access: 'users'
+  access: 'users',
+  settings: 'settings',
+  'academic-settings': 'settings'
 };

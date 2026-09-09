@@ -104,6 +104,7 @@ export const ROLE_CONFIGS: Record<RoleType, RoleConfig> = {
           { id: 'activities', label: 'Course Activities & Labs', icon: Layers },
           { id: 'infrastructure', label: 'Campus Venues & Labs', icon: Building },
           { id: 'calendar', label: 'Periods & Calendar', icon: Clock },
+          { id: 'settings', label: 'Academic Settings (CRUD)', icon: Sliders, badge: 'ADMIN' },
           { id: 'availability', label: 'Faculty Workload Matrix', icon: CalendarCheck }
         ]
       },
