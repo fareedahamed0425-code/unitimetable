@@ -109,10 +109,25 @@ async function buildProblemContext(profileId?: string): Promise<TimetableProblem
   });
 
   const allSlotsRaw = await pgQuery('SELECT * FROM time_slots ORDER BY day_of_week ASC, period_index ASC');
-  const allTimeSlots: TimeSlot[] = allSlotsRaw.map(s => ({
-    id: s.id, dayOfWeek: s.day_of_week, dayName: s.day_name, periodIndex: s.period_index,
-    startTime: s.start_time, endTime: s.end_time, isBreak: Boolean(s.is_break), label: s.label || undefined
-  }));
+  
+  const allTimeSlotsMap = new Map<string, TimeSlot>();
+  for (const s of allSlotsRaw) {
+    const key = `${s.day_of_week}-${s.period_index}`;
+    const isBreak = Boolean(s.is_break);
+    if (!allTimeSlotsMap.has(key)) {
+      allTimeSlotsMap.set(key, {
+        id: s.id, dayOfWeek: s.day_of_week, dayName: s.day_name, periodIndex: s.period_index,
+        startTime: s.start_time, endTime: s.end_time, isBreak: isBreak, label: s.label || undefined
+      });
+    } else {
+      // If this grid slot is a valid teaching period for ANY year, it should not be a global break
+      if (allTimeSlotsMap.get(key)!.isBreak && !isBreak) {
+        allTimeSlotsMap.get(key)!.isBreak = false;
+      }
+    }
+  }
+  
+  const allTimeSlots: TimeSlot[] = Array.from(allTimeSlotsMap.values());
   const timeSlots = allTimeSlots.filter(s => !s.isBreak);
 
   const availRaw = await pgQuery('SELECT * FROM entity_availability');
@@ -796,7 +811,7 @@ apiRouter.post('/generator/generate', async (req: Request, res: Response) => {
           INSERT INTO timetables (id, academic_year_id, name, version, status, generation_mode, profile_id, quality_score_json, created_by)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
           ON CONFLICT(id) DO UPDATE SET
-            version = version + 1,
+            version = timetables.version + 1,
             status = 'GENERATED',
             generation_mode = excluded.generation_mode,
             quality_score_json = excluded.quality_score_json,
