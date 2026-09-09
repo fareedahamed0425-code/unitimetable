@@ -1942,19 +1942,18 @@ apiRouter.post('/timetables/upload-extract', async (req: Request, res: Response)
         // 5. Create Activity Record
         const actId = `act-${timetableId}-${i}-${Date.now()}`;
         const actName = `${session.courseName} (${session.sectionNames.join(', ')})`;
-        const studentCount = session.sectionNames.length * 60;
 
         db.prepare(`
           INSERT INTO activities (
-            id, code, name, course_id, activity_type, duration_periods, occurrences_per_week, total_student_count, required_room_type
-          ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
-        `).run(actId, `ACT-${session.courseCode}-${i}`, actName, courseId, session.activityType, session.duration, studentCount, session.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM');
+            id, code, name, course_id, activity_type, duration_periods, occurrences_per_week, required_room_type
+          ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+        `).run(actId, `ACT-${session.courseCode}-${i}`, actName, courseId, session.activityType, session.duration, session.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM');
 
         writeThroughPg(`
           INSERT INTO activities (
-            id, code, name, course_id, activity_type, duration_periods, occurrences_per_week, total_student_count, required_room_type
-          ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
-        `, [actId, `ACT-${session.courseCode}-${i}`, actName, courseId, session.activityType, session.duration, studentCount, session.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM']);
+            id, code, name, course_id, activity_type, duration_periods, occurrences_per_week, required_room_type
+          ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+        `, [actId, `ACT-${session.courseCode}-${i}`, actName, courseId, session.activityType, session.duration, session.activityType === 'LABORATORY' ? 'COMPUTER_LAB' : 'CLASSROOM']);
 
         // Insert Teacher Assignments
         for (const tId of resolvedTeacherIds) {
@@ -2692,7 +2691,7 @@ apiRouter.post('/admin/semesters', async (req: Request, res: Response) => {
 apiRouter.get('/admin/hierarchy/full', (req: Request, res: Response) => {
   try {
     const sections = db.prepare(`
-      SELECT s.id, s.name, s.student_count,
+      SELECT s.id, s.name, s.student_count, s.semester_id,
              b.start_year, b.id as batch_id,
              sem.semester_number,
              CASE WHEN sem.semester_number <= 2 THEN 1
@@ -2706,9 +2705,46 @@ apiRouter.get('/admin/hierarchy/full', (req: Request, res: Response) => {
       LEFT JOIN programs p ON p.id=b.program_id
       LEFT JOIN departments d ON d.id=p.department_id
       ORDER BY d.code, year_number, s.name
-    `).all();
-    const academicYear = db.prepare('SELECT * FROM academic_years WHERE is_current=1 LIMIT 1').get();
-    res.json({ success: true, data: { sections, academicYear } });
+    `).all() as any[];
+
+    // Group sections by Year (1, 2, 3, 4) and Department
+    const yearMap = new Map<number, { year: number; yearLabel: string; departments: Map<string, any> }>();
+    for (let yr = 1; yr <= 4; yr++) {
+      yearMap.set(yr, {
+        year: yr,
+        yearLabel: yr === 1 ? '1st Year' : yr === 2 ? '2nd Year' : yr === 3 ? '3rd Year' : '4th Year (Final)',
+        departments: new Map()
+      });
+    }
+
+    for (const sec of sections) {
+      const yr = sec.year_number || 1;
+      const yrObj = yearMap.get(yr) || yearMap.get(1)!;
+      const deptKey = sec.dept_id || 'dept-cse';
+      if (!yrObj.departments.has(deptKey)) {
+        yrObj.departments.set(deptKey, {
+          deptId: deptKey,
+          deptName: sec.dept_name || 'Computer Science & Engineering',
+          deptCode: sec.dept_code || 'CSE',
+          sections: []
+        });
+      }
+      yrObj.departments.get(deptKey).sections.push({
+        id: sec.id,
+        name: sec.name,
+        studentCount: sec.student_count || 60,
+        semesterId: sec.semester_id,
+        semesterNumber: sec.semester_number
+      });
+    }
+
+    const formattedHierarchy = Array.from(yearMap.values()).map(y => ({
+      year: y.year,
+      yearLabel: y.yearLabel,
+      departments: Array.from(y.departments.values())
+    }));
+
+    res.json({ success: true, data: formattedHierarchy });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

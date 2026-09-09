@@ -804,7 +804,7 @@ export const AcademicSettingsView: React.FC = () => {
 
           {/* Hierarchy Cards for Selected Year */}
           {(() => {
-            const currentYearData = hierarchy.find(h => h.year === selectedYearTab);
+            const currentYearData = Array.isArray(hierarchy) ? hierarchy.find(h => h.year === selectedYearTab) : null;
             const departments = currentYearData?.departments || [];
 
             if (departments.length === 0) {
