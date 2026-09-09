@@ -682,7 +682,19 @@ apiRouter.get('/infrastructure', (req: Request, res: Response) => {
 });
 
 apiRouter.get('/calendar', (req: Request, res: Response) => {
-  const timeSlotsRaw = db.prepare('SELECT * FROM time_slots ORDER BY day_of_week ASC, period_index ASC').all() as any[];
+  const { year } = req.query;
+  let timeSlotsRaw: any[] = [];
+  if (year !== undefined && year !== 'ALL' && year !== '' && Number(year) > 0) {
+    const yearSlots = db.prepare('SELECT * FROM time_slots WHERE year_number = ? ORDER BY day_of_week ASC, period_index ASC').all(Number(year)) as any[];
+    if (yearSlots.length > 0) {
+      timeSlotsRaw = yearSlots;
+    } else {
+      timeSlotsRaw = db.prepare('SELECT * FROM time_slots WHERE year_number = 0 ORDER BY day_of_week ASC, period_index ASC').all() as any[];
+    }
+  } else {
+    timeSlotsRaw = db.prepare('SELECT * FROM time_slots ORDER BY year_number ASC, day_of_week ASC, period_index ASC').all() as any[];
+  }
+
   const timeSlots: TimeSlot[] = timeSlotsRaw.map(s => ({
     id: s.id,
     dayOfWeek: s.day_of_week,
@@ -691,7 +703,8 @@ apiRouter.get('/calendar', (req: Request, res: Response) => {
     startTime: s.start_time,
     endTime: s.end_time,
     isBreak: Boolean(s.is_break),
-    label: s.label
+    label: s.label,
+    yearNumber: s.year_number || 0
   }));
 
   res.json({ success: true, data: timeSlots });
@@ -2554,11 +2567,20 @@ apiRouter.post('/admin/dispatch-timetables', async (req: Request, res: Response)
 });
 
 // ============================================================
-// 16. TIME SLOTS CRUD (Admin Editable Periods)
+// 16. TIME SLOTS CRUD (Admin Editable Periods Per Year & Day)
 // ============================================================
 apiRouter.get('/admin/calendar/slots', (req: Request, res: Response) => {
   try {
-    const slots = db.prepare('SELECT * FROM time_slots ORDER BY day_of_week, period_index').all();
+    const { year } = req.query;
+    let query = 'SELECT * FROM time_slots';
+    const params: any[] = [];
+    if (year !== undefined && year !== 'ALL' && year !== '') {
+      query += ' WHERE year_number = ? ORDER BY day_of_week, period_index';
+      params.push(Number(year));
+    } else {
+      query += ' ORDER BY year_number ASC, day_of_week, period_index';
+    }
+    const slots = db.prepare(query).all(...params);
     res.json({ success: true, data: slots });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -2568,11 +2590,12 @@ apiRouter.get('/admin/calendar/slots', (req: Request, res: Response) => {
 apiRouter.put('/admin/calendar/slots/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { start_time, end_time, label, is_break } = req.body;
-    db.prepare('UPDATE time_slots SET start_time=?, end_time=?, label=?, is_break=? WHERE id=?')
-      .run(start_time, end_time, label, is_break ? 1 : 0, id);
-    await writeThroughPg('UPDATE time_slots SET start_time=$1, end_time=$2, label=$3, is_break=$4 WHERE id=$5',
-      [start_time, end_time, label, is_break ? 1 : 0, id]);
+    const { start_time, end_time, label, is_break, year_number } = req.body;
+    const yNum = year_number !== undefined ? Number(year_number) : 0;
+    db.prepare('UPDATE time_slots SET start_time=?, end_time=?, label=?, is_break=?, year_number=? WHERE id=?')
+      .run(start_time, end_time, label, is_break ? 1 : 0, yNum, id);
+    await writeThroughPg('UPDATE time_slots SET start_time=$1, end_time=$2, label=$3, is_break=$4, year_number=$5 WHERE id=$6',
+      [start_time, end_time, label, is_break ? 1 : 0, yNum, id]);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -2581,12 +2604,13 @@ apiRouter.put('/admin/calendar/slots/:id', async (req: Request, res: Response) =
 
 apiRouter.post('/admin/calendar/slots', async (req: Request, res: Response) => {
   try {
-    const { day_of_week, day_name, period_index, start_time, end_time, label, is_break } = req.body;
-    const id = `slot-${day_of_week}-${period_index}-${Date.now()}`;
-    db.prepare('INSERT INTO time_slots (id, day_of_week, day_name, period_index, start_time, end_time, is_break, label) VALUES (?,?,?,?,?,?,?,?)')
-      .run(id, day_of_week, day_name, period_index, start_time, end_time, is_break ? 1 : 0, label);
-    await writeThroughPg('INSERT INTO time_slots (id, day_of_week, day_name, period_index, start_time, end_time, is_break, label) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-      [id, day_of_week, day_name, period_index, start_time, end_time, is_break ? 1 : 0, label]);
+    const { day_of_week, day_name, period_index, start_time, end_time, label, is_break, year_number = 0 } = req.body;
+    const yNum = Number(year_number) || 0;
+    const id = `slot-y${yNum}-${day_of_week}-${period_index}-${Date.now()}`;
+    db.prepare('INSERT INTO time_slots (id, day_of_week, day_name, period_index, start_time, end_time, is_break, label, year_number) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run(id, day_of_week, day_name, period_index, start_time, end_time, is_break ? 1 : 0, label, yNum);
+    await writeThroughPg('INSERT INTO time_slots (id, day_of_week, day_name, period_index, start_time, end_time, is_break, label, year_number) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+      [id, day_of_week, day_name, period_index, start_time, end_time, is_break ? 1 : 0, label, yNum]);
     res.json({ success: true, id });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -2599,6 +2623,72 @@ apiRouter.delete('/admin/calendar/slots/:id', async (req: Request, res: Response
     db.prepare('DELETE FROM time_slots WHERE id=?').run(id);
     await writeThroughPg('DELETE FROM time_slots WHERE id=$1', [id]);
     res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Copy period timings from one year to another
+apiRouter.post('/admin/calendar/slots/copy-year', async (req: Request, res: Response) => {
+  try {
+    const { sourceYear = 0, targetYear } = req.body;
+    if (targetYear === undefined || targetYear === null) {
+      return res.status(400).json({ success: false, error: 'Target year is required.' });
+    }
+    const srcSlots = db.prepare('SELECT * FROM time_slots WHERE year_number = ? ORDER BY day_of_week, period_index').all(Number(sourceYear)) as any[];
+    if (srcSlots.length === 0) {
+      return res.status(404).json({ success: false, error: `No source time slots found for Year ${sourceYear}` });
+    }
+
+    db.prepare('DELETE FROM time_slots WHERE year_number = ?').run(Number(targetYear));
+    await writeThroughPg('DELETE FROM time_slots WHERE year_number = $1', [Number(targetYear)]);
+
+    const insertStmt = db.prepare(`
+      INSERT INTO time_slots (id, day_of_week, day_name, period_index, start_time, end_time, is_break, label, year_number)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const s of srcSlots) {
+      const newId = `slot-y${targetYear}-${s.day_of_week}-${s.period_index}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      insertStmt.run(newId, s.day_of_week, s.day_name, s.period_index, s.start_time, s.end_time, s.is_break, s.label, Number(targetYear));
+      await writeThroughPg(`
+        INSERT INTO time_slots (id, day_of_week, day_name, period_index, start_time, end_time, is_break, label, year_number)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `, [newId, s.day_of_week, s.day_name, s.period_index, s.start_time, s.end_time, s.is_break, s.label, Number(targetYear)]);
+    }
+
+    res.json({ success: true, message: `Successfully copied ${srcSlots.length} period slots to Year ${targetYear}` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Apply single day period timings across all 6 days
+apiRouter.post('/admin/calendar/slots/apply-all-days', async (req: Request, res: Response) => {
+  try {
+    const { year = 0, sourceDay = 0 } = req.body;
+    const daySlots = db.prepare('SELECT * FROM time_slots WHERE year_number = ? AND day_of_week = ? ORDER BY period_index').all(Number(year), Number(sourceDay)) as any[];
+    if (daySlots.length === 0) {
+      return res.status(404).json({ success: false, error: 'No slots found for the selected day' });
+    }
+    const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    for (let d = 0; d < 6; d++) {
+      if (d === Number(sourceDay)) continue;
+      db.prepare('DELETE FROM time_slots WHERE year_number = ? AND day_of_week = ?').run(Number(year), d);
+      await writeThroughPg('DELETE FROM time_slots WHERE year_number = $1 AND day_of_week = $2', [Number(year), d]);
+      for (const s of daySlots) {
+        const newId = `slot-y${year}-${d}-${s.period_index}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        db.prepare(`
+          INSERT INTO time_slots (id, day_of_week, day_name, period_index, start_time, end_time, is_break, label, year_number)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(newId, d, dayNames[d], s.period_index, s.start_time, s.end_time, s.is_break, s.label, Number(year));
+        await writeThroughPg(`
+          INSERT INTO time_slots (id, day_of_week, day_name, period_index, start_time, end_time, is_break, label, year_number)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `, [newId, d, dayNames[d], s.period_index, s.start_time, s.end_time, s.is_break, s.label, Number(year)]);
+      }
+    }
+    res.json({ success: true, message: `Applied period timings to all days for Year ${year || 'Default'}` });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

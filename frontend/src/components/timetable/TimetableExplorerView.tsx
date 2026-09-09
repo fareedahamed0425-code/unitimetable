@@ -145,12 +145,12 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
 
   const loadHierarchySections = async () => {
     try {
-      const [hier, fullHier] = await Promise.all([
-        api.getHierarchy().catch(() => null),
+      const [cohortsData, fullHier] = await Promise.all([
+        api.getCohorts().catch(() => ({})),
         api.getHierarchyFull().catch(() => [])
       ]);
       setHierarchyYears(fullHier || []);
-      const sList = hier?.sections || [];
+      const sList = cohortsData?.sections || [];
       setSections(sList);
       if (sList.length > 0 && !selectedFilterId) {
         setSelectedFilterId(sList[0].id);
@@ -207,35 +207,126 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
     { id: 5, name: 'Saturday', short: 'Sat' }
   ];
 
-  const periods = [
-    { index: 0, time: '09:00 - 10:00', label: 'Period 1' },
-    { index: 1, time: '10:00 - 11:00', label: 'Period 2' },
-    { index: 2, time: '11:15 - 12:15', label: 'Period 3' },
-    { index: 3, time: '12:15 - 13:15', label: 'Period 4' },
-    { index: 4, time: '13:15 - 14:00', label: 'Lunch Break', isBreak: true },
-    { index: 5, time: '14:00 - 15:00', label: 'Period 5' },
-    { index: 6, time: '15:00 - 16:00', label: 'Period 6' },
-    { index: 7, time: '16:00 - 17:00', label: 'Period 7' }
-  ];
+  // Helper for active section info
+  const activeSection = React.useMemo(() => {
+    if (filterType !== 'SECTION' || !selectedFilterId) return null;
+    return sections.find(s => s.id === selectedFilterId || s.name === selectedFilterId) || null;
+  }, [sections, filterType, selectedFilterId]);
+
+  // Derive academic year number (1, 2, 3, 4) from active section
+  const activeSectionYear = React.useMemo(() => {
+    if (!activeSection) return 0;
+    if (activeSection.semester_number) {
+      return Math.ceil(Number(activeSection.semester_number) / 2);
+    }
+    const name = (activeSection.name || '').toUpperCase();
+    if (name.startsWith('IV') || name.includes('YEAR 4') || name.includes('4TH')) return 4;
+    if (name.startsWith('III') || name.includes('YEAR 3') || name.includes('3RD')) return 3;
+    if (name.startsWith('II') || name.includes('YEAR 2') || name.includes('2ND')) return 2;
+    if (name.startsWith('I') || name.includes('YEAR 1') || name.includes('1ST')) return 1;
+    return 0;
+  }, [activeSection]);
+
+  // Effective year level for period timings
+  const effectiveYearNum = selectedYear !== 'ALL' ? Number(selectedYear) : activeSectionYear;
+
+  // Dynamic Year-Specific Periods
+  const periods = React.useMemo(() => {
+    if (calendar && calendar.length > 0) {
+      const matchingSlots = effectiveYearNum > 0 && calendar.some(c => c.yearNumber === effectiveYearNum)
+        ? calendar.filter(c => c.yearNumber === effectiveYearNum)
+        : calendar.filter(c => !c.yearNumber || c.yearNumber === 0);
+
+      if (matchingSlots.length > 0) {
+        const periodMap = new Map<number, { index: number; time: string; label: string; isBreak: boolean }>();
+        matchingSlots.forEach(s => {
+          if (!periodMap.has(s.periodIndex)) {
+            periodMap.set(s.periodIndex, {
+              index: s.periodIndex,
+              time: `${s.startTime} - ${s.endTime}`,
+              label: s.label || (s.isBreak ? 'Break / Lunch' : `Period ${s.periodIndex + 1}`),
+              isBreak: Boolean(s.isBreak)
+            });
+          }
+        });
+        return Array.from(periodMap.values()).sort((a, b) => a.index - b.index);
+      }
+    }
+    return [
+      { index: 0, time: '09:00 - 10:00', label: 'Period 1', isBreak: false },
+      { index: 1, time: '10:00 - 11:00', label: 'Period 2', isBreak: false },
+      { index: 2, time: '11:10 - 12:10', label: 'Period 3', isBreak: false },
+      { index: 3, time: '12:10 - 13:00', label: 'Period 4', isBreak: false },
+      { index: 4, time: '13:00 - 14:00', label: 'Lunch Break', isBreak: true },
+      { index: 5, time: '14:00 - 15:00', label: 'Period 5', isBreak: false },
+      { index: 6, time: '15:00 - 16:00', label: 'Period 6', isBreak: false },
+      { index: 7, time: '16:00 - 17:00', label: 'Period 7', isBreak: false }
+    ];
+  }, [calendar, effectiveYearNum]);
+
+  // Normalize string for fuzzy section comparison
+  const normalizeKey = (str: string) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
   // Filtering entries
-  const filteredEntries = (timetable?.entries || []).filter(e => {
-    if (filterType === 'ALL') return true;
-    if (filterType === 'SECTION') {
-      return e.sectionNames.some(s => s.toLowerCase().includes(selectedFilterId.toLowerCase())) ||
-             e.groupNames.some(g => g.toLowerCase().includes(selectedFilterId.toLowerCase()));
-    }
-    if (filterType === 'TEACHER') {
-      const teacherObj = teachers.find(t => t.id === selectedFilterId);
-      const targetName = teacherObj ? teacherObj.name.toLowerCase() : selectedFilterId.toLowerCase();
-      return e.teacherIds.includes(selectedFilterId) || 
-             e.teacherNames.some(n => n.toLowerCase().includes(targetName));
-    }
-    if (filterType === 'ROOM') {
-      return e.roomId === selectedFilterId;
-    }
-    return true;
-  });
+  const filteredEntries = React.useMemo(() => {
+    return (timetable?.entries || []).filter(e => {
+      if (filterType === 'ALL') return true;
+      if (filterType === 'SECTION') {
+        const targetId = selectedFilterId.toLowerCase();
+        const targetName = (activeSection?.name || selectedFilterId).toLowerCase();
+        const normTarget = normalizeKey(targetName);
+        const normId = normalizeKey(targetId);
+
+        return e.sectionNames.some(s => {
+          const normS = normalizeKey(s);
+          const sLower = s.toLowerCase();
+          return sLower.includes(targetId) ||
+                 sLower.includes(targetName) ||
+                 normS.includes(normTarget) ||
+                 normTarget.includes(normS) ||
+                 normS.includes(normId) ||
+                 normId.includes(normS);
+        }) || e.groupNames.some(g => {
+          const normG = normalizeKey(g);
+          const gLower = g.toLowerCase();
+          return gLower.includes(targetId) ||
+                 gLower.includes(targetName) ||
+                 normG.includes(normTarget) ||
+                 normTarget.includes(normG);
+        });
+      }
+      if (filterType === 'TEACHER') {
+        const teacherObj = teachers.find(t => t.id === selectedFilterId);
+        const targetName = teacherObj ? teacherObj.name.toLowerCase() : selectedFilterId.toLowerCase();
+        return e.teacherIds.includes(selectedFilterId) || 
+               e.teacherNames.some(n => n.toLowerCase().includes(targetName));
+      }
+      if (filterType === 'ROOM') {
+        return e.roomId === selectedFilterId;
+      }
+      return true;
+    });
+  }, [timetable?.entries, filterType, selectedFilterId, activeSection, teachers]);
+
+  // Compute live session count per section
+  const sectionSessionCounts = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    const entries = timetable?.entries || [];
+    sections.forEach(sec => {
+      const normName = normalizeKey(sec.name);
+      const normId = normalizeKey(sec.id);
+      counts[sec.id] = entries.filter(e => {
+        return e.sectionNames.some(s => {
+          const ns = normalizeKey(s);
+          return ns.includes(normName) || normName.includes(ns) || ns.includes(normId) || normId.includes(ns);
+        }) || e.groupNames.some(g => {
+          const ng = normalizeKey(g);
+          return ng.includes(normName) || normName.includes(ng);
+        });
+      }).length;
+    });
+    return counts;
+  }, [sections, timetable?.entries]);
 
   const handleCellClick = (dayId: number, periodIndex: number) => {
     if (movingEntry) {
@@ -714,8 +805,9 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
 
   const handleExportCsv = () => {
     if (!timetable || timetable.entries.length === 0) return;
+    const targetEntries = filterType === 'ALL' ? timetable.entries : filteredEntries;
     const headers = ['Day', 'Period', 'Course Code', 'Course Name', 'Type', 'Room', 'Teachers', 'Cohorts'];
-    const rows = timetable.entries.map(e => [
+    const rows = targetEntries.map(e => [
       days.find(d => d.id === e.dayOfWeek)?.name || e.dayOfWeek,
       periods.find(p => p.index === e.periodIndex)?.time || e.periodIndex,
       e.courseCode,
@@ -731,11 +823,30 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `${timetable.name.replace(/\s+/g, '_')}.csv`);
+    const fileName = filterType === 'SECTION' && activeSection
+      ? `${activeSection.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_Timetable.csv`
+      : `${timetable.name.replace(/\s+/g, '_')}.csv`;
+    link.setAttribute('download', fileName);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
+
+  // Filter sections according to selected Year scope
+  const availableScopedSections = React.useMemo(() => {
+    if (selectedYear === 'ALL') return sections;
+    return sections.filter(s => {
+      if (s.semester_number) {
+        return Math.ceil(Number(s.semester_number) / 2) === selectedYear;
+      }
+      const n = (s.name || '').toUpperCase();
+      if (selectedYear === 4) return n.startsWith('IV') || n.includes('YEAR 4') || n.includes('4TH');
+      if (selectedYear === 3) return n.startsWith('III') || n.includes('YEAR 3') || n.includes('3RD');
+      if (selectedYear === 2) return n.startsWith('II') || n.includes('YEAR 2') || n.includes('2ND');
+      if (selectedYear === 1) return n.startsWith('I') || n.includes('YEAR 1') || n.includes('1ST');
+      return true;
+    });
+  }, [sections, selectedYear]);
 
   return (
     <div className="space-y-4 max-w-full">
@@ -774,6 +885,67 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
               {yr === 'ALL' ? '🌐 All Years (1–4)' : `Year ${yr} (${yr === 1 ? '1st' : yr === 2 ? '2nd' : yr === 3 ? '3rd' : '4th'})`}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* Individual Class Timetable Quick Switcher Ribbon */}
+      <div className="p-2.5 rounded-xl bg-slate-50/80 border border-[#D8E6ED] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-2xs">
+        <div className="flex items-center gap-2 min-w-max">
+          <span className="text-xs font-bold text-[#002E4E] flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5 text-[#2582A1]" /> Select Class Timetable:
+          </span>
+          <button
+            onClick={() => {
+              setFilterType('ALL');
+              setSelectedFilterId('');
+            }}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+              filterType === 'ALL'
+                ? 'bg-[#002E4E] text-[#E6C200] shadow-xs'
+                : 'bg-white border border-[#D8E6ED] text-[#4A6375] hover:text-[#002E4E] hover:bg-white'
+            }`}
+          >
+            🏛️ All Classes
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 scrollbar-thin">
+          {availableScopedSections.map(sec => {
+            const isSelected = filterType === 'SECTION' && (selectedFilterId === sec.id || selectedFilterId === sec.name);
+            const count = sectionSessionCounts[sec.id] || 0;
+            return (
+              <button
+                key={sec.id}
+                onClick={() => {
+                  setFilterType('SECTION');
+                  setSelectedFilterId(sec.id);
+                  if (newSessionSectionIds.length === 0 || newSessionSectionIds[0] !== sec.id) {
+                    setNewSessionSectionIds([sec.id]);
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                  isSelected
+                    ? 'bg-[#002E4E] text-[#E6C200] shadow-xs ring-2 ring-[#2582A1]/40 scale-[1.02]'
+                    : 'bg-white border border-[#D8E6ED] text-[#002E4E] hover:border-[#2582A1] hover:bg-[#F0F6F9]'
+                }`}
+                title={`View ${sec.name} Class Timetable (${count} sessions scheduled)`}
+              >
+                <span>{sec.name}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                    isSelected
+                      ? 'bg-[#E6C200] text-[#002E4E]'
+                      : 'bg-[#EBF4F7] text-[#2582A1]'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+          {availableScopedSections.length === 0 && (
+            <span className="text-xs text-slate-400 italic px-2">No class cohorts in this year scope</span>
+          )}
         </div>
       </div>
 
@@ -1054,6 +1226,77 @@ export const TimetableExplorerView: React.FC<TimetableExplorerProps> = ({
             <div className="font-bold text-[#B91C1C]">{conflictWarning.title}</div>
             <div className="text-[#575A65]">{conflictWarning.description}</div>
             <div className="font-semibold text-[#121316]">Suggested Fix: {conflictWarning.suggestedFix}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Active Class / Filtered Context Banner */}
+      {filterType === 'SECTION' && activeSection && (
+        <div className="p-3.5 rounded-xl bg-gradient-to-r from-[#002E4E] to-[#1B6680] text-white shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-3 border border-[#2582A1]/30">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#E6C200] text-[#002E4E] font-extrabold flex items-center justify-center text-sm shadow-sm">
+              {activeSection.name.split(' ').pop() || 'SEC'}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-extrabold text-sm text-white flex items-center gap-1.5">
+                  <span>Class Timetable: {activeSection.name}</span>
+                </h3>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-[#E6C200]/20 text-[#E6C200] border border-[#E6C200]/40">
+                  Year {activeSectionYear || (selectedYear !== 'ALL' ? selectedYear : 1)}
+                </span>
+                {activeSection.department_name && (
+                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-white/10 text-slate-200 hidden sm:inline">
+                    {activeSection.department_name}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300 mt-1">
+                <span className="flex items-center gap-1">
+                  <Building className="w-3.5 h-3.5 text-[#E6C200]" />
+                  <span>Venue: <strong>{activeSection.room_name || activeSection.home_room_id || 'Assigned Classroom'}</strong></span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <Users className="w-3.5 h-3.5 text-sky-300" />
+                  <span>Class Size: <strong>{activeSection.student_count || 60} Students</strong></span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-emerald-300" />
+                  <span>Scheduled: <strong>{filteredEntries.length} Sessions / Week</strong></span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end md:self-center">
+            <button
+              onClick={handleExportCsv}
+              className="lux-btn text-xs py-1.5 px-3 bg-white/10 hover:bg-white/20 text-white rounded-lg border border-white/20 flex items-center gap-1.5 font-semibold transition-all"
+              title="Download this class schedule as Excel / CSV"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-[#E6C200]" />
+              <span>Export Class</span>
+            </button>
+            <button
+              onClick={() => window.print()}
+              className="lux-btn text-xs py-1.5 px-3 bg-white/10 hover:bg-white/20 text-white rounded-lg border border-white/20 flex items-center gap-1.5 font-semibold transition-all"
+              title="Print this class timetable"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print</span>
+            </button>
+            <button
+              onClick={() => {
+                setNewSessionDay(0);
+                setNewSessionPeriod(0);
+                setNewSessionSectionIds([activeSection.id]);
+                setIsAddSessionModalOpen(true);
+              }}
+              className="lux-btn text-xs py-1.5 px-3 bg-[#E6C200] hover:bg-[#d4b200] text-[#002E4E] rounded-lg font-bold flex items-center gap-1.5 shadow-xs transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Class Session</span>
+            </button>
           </div>
         </div>
       )}

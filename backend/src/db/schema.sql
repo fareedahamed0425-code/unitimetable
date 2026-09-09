@@ -190,7 +190,8 @@ CREATE TABLE IF NOT EXISTS time_slots (
     start_time TEXT NOT NULL,      -- "09:00"
     end_time TEXT NOT NULL,        -- "10:00"
     is_break INTEGER NOT NULL DEFAULT 0,
-    label TEXT
+    label TEXT,
+    year_number INTEGER NOT NULL DEFAULT 0
 );
 
 -- 6. Courses & Activities

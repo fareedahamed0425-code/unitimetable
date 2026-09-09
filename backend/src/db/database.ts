@@ -220,6 +220,10 @@ export function initializeDatabase(): void {
       db.exec('DROP TABLE users');
       db.exec(schemaSql);
     }
+    const slotCols = db.prepare('PRAGMA table_info(time_slots)').all() as any[];
+    if (slotCols.length > 0 && !slotCols.some(c => c.name === 'year_number')) {
+      db.exec('ALTER TABLE time_slots ADD COLUMN year_number INTEGER NOT NULL DEFAULT 0');
+    }
   } catch (e) {
     console.warn('SQLite migration warning:', e);
   }

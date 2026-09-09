@@ -206,10 +206,11 @@ export const api = {
     return json.data;
   },
 
-  async getCalendar(): Promise<TimeSlot[]> {
-    const res = await fetch(url('calendar'));
+  async getCalendar(year?: number | string): Promise<TimeSlot[]> {
+    const q = year !== undefined && year !== 'ALL' && year !== '' ? `?year=${year}` : '';
+    const res = await fetch(url(`calendar${q}`));
     const json = await res.json();
-    return json.data;
+    return json.data || [];
   },
 
   // Availability
@@ -571,8 +572,9 @@ export const api = {
   },
 
   // Admin Academic Settings - Slots
-  async getAdminSlots(): Promise<any[]> {
-    const res = await fetch(url('admin/calendar/slots'));
+  async getAdminSlots(year?: number | string): Promise<any[]> {
+    const q = year !== undefined && year !== 'ALL' && year !== '' ? `?year=${year}` : '';
+    const res = await fetch(url(`admin/calendar/slots${q}`));
     const json = await res.json();
     return json.data || [];
   },
@@ -606,6 +608,28 @@ export const api = {
     const json = await res.json();
     if (!json.success) throw new Error(json.error || 'Failed to delete time slot');
     return json.data;
+  },
+
+  async copyYearSlots(sourceYear: number, targetYear: number): Promise<any> {
+    const res = await fetch(url('admin/calendar/slots/copy-year'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceYear, targetYear })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to copy period timings');
+    return json;
+  },
+
+  async applyAllDaysSlots(year: number, sourceDay: number): Promise<any> {
+    const res = await fetch(url('admin/calendar/slots/apply-all-days'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ year, sourceDay })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to apply period timings across days');
+    return json;
   },
 
   // Admin Academic Settings - Rooms & Buildings

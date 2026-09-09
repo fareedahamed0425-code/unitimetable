@@ -283,6 +283,7 @@ export interface TimeSlot {
   endTime: string;    // "10:00"
   isBreak: boolean;   // true for lunch/recess
   label?: string;     // e.g. "Morning Slot 1" or "Lunch Break"
+  yearNumber?: number; // 0 = All Years / Default, 1 = Year 1, 2 = Year 2, 3 = Year 3, 4 = Year 4
 }
 
 // ------------------------------------------

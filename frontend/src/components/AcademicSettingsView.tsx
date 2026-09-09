@@ -33,6 +33,7 @@ interface TimeSlotItem {
   endTime: string;
   label?: string;
   isBreak?: boolean;
+  yearNumber?: number;
 }
 
 interface BuildingItem {
@@ -73,8 +74,9 @@ export const AcademicSettingsView: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Time Slots state
+  // Time Slots state (with Year-Specific Periods Support)
   const [slots, setSlots] = useState<TimeSlotItem[]>([]);
+  const [selectedPeriodYear, setSelectedPeriodYear] = useState<number | 'ALL'>('ALL');
   const [slotSearch, setSlotSearch] = useState('');
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
   const [slotFormData, setSlotFormData] = useState({
@@ -82,9 +84,14 @@ export const AcademicSettingsView: React.FC = () => {
     startTime: '08:30',
     endTime: '09:30',
     label: '',
-    isBreak: false
+    isBreak: false,
+    yearNumber: 0
   });
   const [showAddSlotModal, setShowAddSlotModal] = useState(false);
+  const [showCopyYearModal, setShowCopyYearModal] = useState(false);
+  const [copyYearData, setCopyYearData] = useState({ sourceYear: 0, targetYear: 1 });
+  const [showApplyAllDaysModal, setShowApplyAllDaysModal] = useState(false);
+  const [applyDaysData, setApplyDaysData] = useState({ year: 0, sourceDay: 0 });
 
   // Venues state
   const [rooms, setRooms] = useState<RoomItem[]>([]);
@@ -118,6 +125,8 @@ export const AcademicSettingsView: React.FC = () => {
   const [newBatchData, setNewBatchData] = useState({ name: '', year: 1, startYear: 2024, endYear: 2028 });
   const [showAddBatchModal, setShowAddBatchModal] = useState(false);
 
+  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
   const showToast = (msg: string, isError = false) => {
     if (isError) {
       setErrorMsg(msg);
@@ -128,18 +137,30 @@ export const AcademicSettingsView: React.FC = () => {
     }
   };
 
-  // Load Time Slots
-  const loadSlots = useCallback(async () => {
+  // Load Time Slots (with year filtering support)
+  const loadSlots = useCallback(async (yearOverride?: number | 'ALL') => {
     try {
       setLoading(true);
-      const data = await api.getAdminSlots();
-      setSlots(data || []);
+      const targetYear = yearOverride !== undefined ? yearOverride : selectedPeriodYear;
+      const data = await api.getAdminSlots(targetYear);
+      const mapped: TimeSlotItem[] = (data || []).map((s: any) => ({
+        id: s.id,
+        day: s.day_of_week ?? s.day ?? 0,
+        dayName: s.day_name || daysOfWeek[s.day_of_week ?? s.day] || `Day ${s.day_of_week ?? s.day}`,
+        periodIndex: s.period_index ?? s.periodIndex ?? 0,
+        startTime: s.start_time || s.startTime || '09:00',
+        endTime: s.end_time || s.endTime || '10:00',
+        label: s.label,
+        isBreak: Boolean(s.is_break ?? s.isBreak),
+        yearNumber: s.year_number ?? s.yearNumber ?? 0
+      }));
+      setSlots(mapped);
     } catch (err: any) {
       showToast(err.message || 'Failed to load time periods', true);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedPeriodYear]);
 
   // Load Venues
   const loadVenues = useCallback(async () => {
@@ -184,7 +205,13 @@ export const AcademicSettingsView: React.FC = () => {
   // Time Slot Handlers
   const handleSaveSlot = async (slotId: string, updatedData: Partial<TimeSlotItem>) => {
     try {
-      await api.updateSlot(slotId, updatedData);
+      await api.updateSlot(slotId, {
+        start_time: updatedData.startTime,
+        end_time: updatedData.endTime,
+        label: updatedData.label,
+        is_break: updatedData.isBreak,
+        year_number: updatedData.yearNumber
+      });
       showToast('Time period updated successfully');
       setEditingSlotId(null);
       loadSlots();
@@ -196,10 +223,19 @@ export const AcademicSettingsView: React.FC = () => {
   const handleAddSlot = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.addSlot(slotFormData);
+      await api.addSlot({
+        day_of_week: slotFormData.day,
+        day_name: daysOfWeek[slotFormData.day],
+        period_index: slots.filter(s => s.day === slotFormData.day && (s.yearNumber === slotFormData.yearNumber)).length,
+        start_time: slotFormData.startTime,
+        end_time: slotFormData.endTime,
+        label: slotFormData.label,
+        is_break: slotFormData.isBreak,
+        year_number: slotFormData.yearNumber
+      });
       showToast('Time period added successfully');
       setShowAddSlotModal(false);
-      setSlotFormData({ day: 0, startTime: '08:30', endTime: '09:30', label: '', isBreak: false });
+      setSlotFormData({ day: 0, startTime: '08:30', endTime: '09:30', label: '', isBreak: false, yearNumber: selectedPeriodYear === 'ALL' ? 0 : selectedPeriodYear });
       loadSlots();
     } catch (err: any) {
       showToast(err.message || 'Failed to add time period', true);
@@ -214,6 +250,37 @@ export const AcademicSettingsView: React.FC = () => {
       loadSlots();
     } catch (err: any) {
       showToast(err.message || 'Failed to delete time period', true);
+    }
+  };
+
+  const handleCopyYear = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setLoading(true);
+      const res = await api.copyYearSlots(copyYearData.sourceYear, copyYearData.targetYear);
+      showToast(res.message || 'Period timings copied successfully');
+      setShowCopyYearModal(false);
+      setSelectedPeriodYear(copyYearData.targetYear);
+      loadSlots(copyYearData.targetYear);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to copy period timings', true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApplyAllDays = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setLoading(true);
+      const res = await api.applyAllDaysSlots(applyDaysData.year, applyDaysData.sourceDay);
+      showToast(res.message || 'Timings applied across all 6 days');
+      setShowApplyAllDaysModal(false);
+      loadSlots(applyDaysData.year);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to apply timings across days', true);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -316,7 +383,6 @@ export const AcademicSettingsView: React.FC = () => {
   };
 
   // Filtered Slots
-  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const filteredSlots = slots.filter(s => {
     if (!slotSearch) return true;
     const term = slotSearch.toLowerCase();
@@ -428,12 +494,77 @@ export const AcademicSettingsView: React.FC = () => {
           </button>
         </div>
       </div>
-
       {/* ========================================================================= */}
-      {/* TAB 1: TIME PERIODS & SLOTS                                              */}
+      {/* TAB 1: TIME PERIODS & SLOTS (YEAR-SPECIFIC & GENERAL)                     */}
       {/* ========================================================================= */}
       {activeTab === 'periods' && (
         <div className="space-y-6">
+          {/* Year Selector Tabs Bar */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900/80 p-3 rounded-2xl border border-slate-800">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+              <span className="text-xs font-semibold text-slate-400 pl-2 pr-1 shrink-0">Academic Year Timings:</span>
+              <button
+                onClick={() => {
+                  setSelectedPeriodYear('ALL');
+                  loadSlots('ALL');
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                  selectedPeriodYear === 'ALL'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                    : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+                }`}
+              >
+                All Years / General Default
+              </button>
+              {[1, 2, 3, 4].map(y => (
+                <button
+                  key={y}
+                  onClick={() => {
+                    setSelectedPeriodYear(y);
+                    loadSlots(y);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+                    selectedPeriodYear === y
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                      : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  <span>Year {y} (B.Tech Y{y})</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                    selectedPeriodYear === y ? 'bg-indigo-700 text-white' : 'bg-slate-800 text-slate-400'
+                  }`}>
+                    {slots.filter(s => s.yearNumber === y).length || slots.filter(s => s.yearNumber === 0).length} slots
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2 self-end md:self-auto">
+              <button
+                onClick={() => {
+                  setApplyDaysData({ year: selectedPeriodYear === 'ALL' ? 0 : selectedPeriodYear, sourceDay: 0 });
+                  setShowApplyAllDaysModal(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition"
+                title="Copy Monday's timing to Tuesday-Saturday"
+              >
+                <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Sync to All 6 Days</span>
+              </button>
+              <button
+                onClick={() => {
+                  setCopyYearData({ sourceYear: selectedPeriodYear === 'ALL' ? 0 : selectedPeriodYear, targetYear: selectedPeriodYear === 1 ? 2 : 1 });
+                  setShowCopyYearModal(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 transition"
+                title="Duplicate timings to another year"
+              >
+                <Layers className="w-3.5 h-3.5 text-purple-400" />
+                <span>Copy Year Schedule</span>
+              </button>
+            </div>
+          </div>
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-800/80 backdrop-blur">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -446,11 +577,17 @@ export const AcademicSettingsView: React.FC = () => {
               />
             </div>
             <button
-              onClick={() => setShowAddSlotModal(true)}
+              onClick={() => {
+                setSlotFormData(prev => ({
+                  ...prev,
+                  yearNumber: selectedPeriodYear === 'ALL' ? 0 : selectedPeriodYear
+                }));
+                setShowAddSlotModal(true);
+              }}
               className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/20 transition"
             >
               <Plus className="w-4 h-4" />
-              <span>Add Time Period</span>
+              <span>Add Time Period {selectedPeriodYear !== 'ALL' ? `(Year ${selectedPeriodYear})` : ''}</span>
             </button>
           </div>
 
@@ -460,6 +597,7 @@ export const AcademicSettingsView: React.FC = () => {
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-900/90 text-slate-400 uppercase text-xs font-semibold tracking-wider border-b border-slate-800">
                   <tr>
+                    <th className="px-6 py-4">Applicable Year</th>
                     <th className="px-6 py-4">Day</th>
                     <th className="px-6 py-4">Period</th>
                     <th className="px-6 py-4">Start Time</th>
@@ -471,15 +609,39 @@ export const AcademicSettingsView: React.FC = () => {
                 <tbody className="divide-y divide-slate-800/60">
                   {filteredSlots.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                        {loading ? 'Loading time slots...' : 'No time periods found. Add periods using the button above.'}
+                      <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                        {loading ? 'Loading time slots...' : 'No time periods found for this year. Add periods using the button above or copy from another year.'}
                       </td>
                     </tr>
                   ) : (
                     filteredSlots.map(s => {
                       const isEditing = editingSlotId === s.id;
+                      const isYearSpecific = (s.yearNumber || 0) > 0;
                       return (
                         <tr key={s.id} className="hover:bg-slate-800/30 transition">
+                          <td className="px-6 py-4">
+                            {isEditing ? (
+                              <select
+                                id={`slot-year-${s.id}`}
+                                defaultValue={s.yearNumber || 0}
+                                className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200"
+                              >
+                                <option value={0}>All Years (Default)</option>
+                                <option value={1}>Year 1</option>
+                                <option value={2}>Year 2</option>
+                                <option value={3}>Year 3</option>
+                                <option value={4}>Year 4</option>
+                              </select>
+                            ) : (
+                              <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
+                                isYearSpecific
+                                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                  : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                              }`}>
+                                {isYearSpecific ? `Year ${s.yearNumber}` : 'All Years (Default)'}
+                              </span>
+                            )}
+                          </td>
                           <td className="px-6 py-4">
                             <span className="font-semibold text-slate-200">{s.dayName || daysOfWeek[s.day] || `Day ${s.day}`}</span>
                             <span className="ml-2 text-xs text-slate-500">Day {s.day}</span>
@@ -513,20 +675,31 @@ export const AcademicSettingsView: React.FC = () => {
                           </td>
                           <td className="px-6 py-4">
                             {isEditing ? (
-                              <input
-                                type="text"
-                                defaultValue={s.label || ''}
-                                id={`slot-label-${s.id}`}
-                                placeholder="e.g. Regular / Lunch Break"
-                                className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200"
-                              />
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  defaultValue={s.label || ''}
+                                  id={`slot-label-${s.id}`}
+                                  placeholder="e.g. Regular / Lunch Break"
+                                  className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200"
+                                />
+                                <label className="flex items-center gap-1 text-xs text-slate-400">
+                                  <input
+                                    type="checkbox"
+                                    id={`slot-break-${s.id}`}
+                                    defaultChecked={s.isBreak}
+                                    className="rounded bg-slate-950 border-slate-700 text-indigo-600"
+                                  />
+                                  <span>Break</span>
+                                </label>
+                              </div>
                             ) : (
                               <div className="flex items-center gap-2">
                                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
                                   s.isBreak
                                     ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                                     : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                }`}>
+                                }}`}>
                                   {s.isBreak ? 'Break / Interval' : 'Academic Class'}
                                 </span>
                                 {s.label && <span className="text-xs text-slate-400">({s.label})</span>}
@@ -541,7 +714,9 @@ export const AcademicSettingsView: React.FC = () => {
                                     const start = (document.getElementById(`slot-start-${s.id}`) as HTMLInputElement)?.value;
                                     const end = (document.getElementById(`slot-end-${s.id}`) as HTMLInputElement)?.value;
                                     const label = (document.getElementById(`slot-label-${s.id}`) as HTMLInputElement)?.value;
-                                    handleSaveSlot(s.id, { startTime: start, endTime: end, label });
+                                    const isBreak = (document.getElementById(`slot-break-${s.id}`) as HTMLInputElement)?.checked;
+                                    const yearNum = Number((document.getElementById(`slot-year-${s.id}`) as HTMLSelectElement)?.value || 0);
+                                    handleSaveSlot(s.id, { startTime: start, endTime: end, label, isBreak, yearNumber: yearNum });
                                   }}
                                   className="p-1.5 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 rounded-lg border border-emerald-500/30 transition"
                                   title="Save Changes"
@@ -926,6 +1101,9 @@ export const AcademicSettingsView: React.FC = () => {
       {/* ========================================================================= */}
       {/* MODAL: ADD TIME PERIOD                                                    */}
       {/* ========================================================================= */}
+      {/* ========================================================================= */}
+      {/* MODAL: ADD TIME PERIOD                                                    */}
+      {/* ========================================================================= */}
       {showAddSlotModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5 animate-scale-in">
@@ -940,6 +1118,21 @@ export const AcademicSettingsView: React.FC = () => {
             </div>
 
             <form onSubmit={handleAddSlot} className="space-y-4 text-sm">
+              <div>
+                <label className="block text-slate-400 text-xs font-semibold mb-1">Applicable Academic Year</label>
+                <select
+                  value={slotFormData.yearNumber}
+                  onChange={e => setSlotFormData({ ...slotFormData, yearNumber: parseInt(e.target.value, 10) })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                >
+                  <option value={0}>All Years (General Default Schedule)</option>
+                  <option value={1}>Year 1 (B.Tech Year 1)</option>
+                  <option value={2}>Year 2 (B.Tech Year 2)</option>
+                  <option value={3}>Year 3 (B.Tech Year 3)</option>
+                  <option value={4}>Year 4 (B.Tech Year 4)</option>
+                </select>
+              </div>
+
               <div>
                 <label className="block text-slate-400 text-xs font-semibold mb-1">Day of Week</label>
                 <select
@@ -1011,6 +1204,148 @@ export const AcademicSettingsView: React.FC = () => {
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/20"
                 >
                   Create Period
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: COPY YEAR SCHEDULE                                                 */}
+      {/* ========================================================================= */}
+      {showCopyYearModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5 animate-scale-in">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Layers className="w-5 h-5 text-purple-400" />
+                <h3 className="font-bold text-lg text-slate-100">Copy Period Timings Between Years</h3>
+              </div>
+              <button onClick={() => setShowCopyYearModal(false)} className="text-slate-400 hover:text-slate-200">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCopyYear} className="space-y-4 text-sm">
+              <p className="text-xs text-slate-400">
+                Duplicate all time slots & period boundaries from one year to another so you don't have to enter them manually for each year.
+              </p>
+
+              <div>
+                <label className="block text-slate-400 text-xs font-semibold mb-1">Source Schedule</label>
+                <select
+                  value={copyYearData.sourceYear}
+                  onChange={e => setCopyYearData({ ...copyYearData, sourceYear: parseInt(e.target.value, 10) })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                >
+                  <option value={0}>All Years (General Default)</option>
+                  <option value={1}>Year 1 Schedule</option>
+                  <option value={2}>Year 2 Schedule</option>
+                  <option value={3}>Year 3 Schedule</option>
+                  <option value={4}>Year 4 Schedule</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 text-xs font-semibold mb-1">Target Academic Year</label>
+                <select
+                  value={copyYearData.targetYear}
+                  onChange={e => setCopyYearData({ ...copyYearData, targetYear: parseInt(e.target.value, 10) })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                >
+                  <option value={1}>Year 1 (B.Tech Year 1)</option>
+                  <option value={2}>Year 2 (B.Tech Year 2)</option>
+                  <option value={3}>Year 3 (B.Tech Year 3)</option>
+                  <option value={4}>Year 4 (B.Tech Year 4)</option>
+                  <option value={0}>All Years (General Default)</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowCopyYearModal(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-purple-600/20"
+                >
+                  {loading ? 'Copying...' : 'Copy Timings Now'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: SYNC TO ALL 6 DAYS                                                 */}
+      {/* ========================================================================= */}
+      {showApplyAllDaysModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5 animate-scale-in">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-indigo-400" />
+                <h3 className="font-bold text-lg text-slate-100">Sync Day's Timings to All 6 Days</h3>
+              </div>
+              <button onClick={() => setShowApplyAllDaysModal(false)} className="text-slate-400 hover:text-slate-200">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleApplyAllDays} className="space-y-4 text-sm">
+              <p className="text-xs text-slate-400">
+                Take the periods and intervals of one day and mirror them across Monday, Tuesday, Wednesday, Thursday, Friday, and Saturday.
+              </p>
+
+              <div>
+                <label className="block text-slate-400 text-xs font-semibold mb-1">Target Academic Year</label>
+                <select
+                  value={applyDaysData.year}
+                  onChange={e => setApplyDaysData({ ...applyDaysData, year: parseInt(e.target.value, 10) })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                >
+                  <option value={0}>All Years (General Default)</option>
+                  <option value={1}>Year 1</option>
+                  <option value={2}>Year 2</option>
+                  <option value={3}>Year 3</option>
+                  <option value={4}>Year 4</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 text-xs font-semibold mb-1">Source Template Day</label>
+                <select
+                  value={applyDaysData.sourceDay}
+                  onChange={e => setApplyDaysData({ ...applyDaysData, sourceDay: parseInt(e.target.value, 10) })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200"
+                >
+                  {daysOfWeek.map((dayName, idx) => (
+                    <option key={idx} value={idx}>{dayName}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowApplyAllDaysModal(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/20"
+                >
+                  {loading ? 'Syncing...' : 'Sync to All 6 Days'}
                 </button>
               </div>
             </form>

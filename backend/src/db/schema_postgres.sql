@@ -228,7 +228,8 @@ CREATE TABLE time_slots (
     start_time VARCHAR(20) NOT NULL,
     end_time VARCHAR(20) NOT NULL,
     is_break INTEGER NOT NULL DEFAULT 0,
-    label VARCHAR(100)
+    label VARCHAR(100),
+    year_number INTEGER NOT NULL DEFAULT 0
 );
 
 -- 6. Courses & Activities
