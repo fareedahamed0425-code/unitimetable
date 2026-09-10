@@ -54,16 +54,16 @@ export const OfficialTimetableModal: React.FC<OfficialTimetableModalProps> = ({
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   // Calculate year and semester numbers
-  const semesterNum = section?.semester_number || 5;
-  const yearNum = Math.ceil(Number(semesterNum) / 2) || 3;
+  const semesterNum = (section as any)?.semesterNumber || (section as any)?.semester_number || (section?.yearNumber ? section.yearNumber * 2 - 1 : 5);
+  const yearNum = section?.yearNumber || Math.ceil(Number(semesterNum) / 2) || 3;
   const yearRoman = formatRoman(yearNum);
   const semRoman = formatRoman(semesterNum);
 
   // Class teacher & room lookup
-  const classTeacherObj = teachers.find(t => t.id === section?.class_teacher_id);
-  const classTeacherName = customMeta?.classTeacher || classTeacherObj?.name || 'Mrs M M Asha';
-  const homeRoomObj = rooms.find(r => r.id === section?.home_room_id);
-  const roomCode = customMeta?.roomNo || homeRoomObj?.code || '202';
+  const classTeacherObj = teachers.find(t => t.id === (section?.classTeacherId || (section as any)?.class_teacher_id));
+  const classTeacherName = customMeta?.classTeacher || section?.classTeacherName || classTeacherObj?.name || 'Mrs M M Asha';
+  const homeRoomObj = rooms.find(r => r.id === (section?.homeRoomId || (section as any)?.home_room_id));
+  const roomCode = customMeta?.roomNo || section?.homeRoomName || homeRoomObj?.code || '202';
 
   const deptName = section?.name || 'CSE-AIML-A';
   const refNumber = customMeta?.refNo || `TAU/SOT/TT/${yearRoman}-${semRoman}/${deptName.replace(/\s+/g, '-')}/2026-27/01`;
@@ -79,8 +79,12 @@ export const OfficialTimetableModal: React.FC<OfficialTimetableModalProps> = ({
   const sectionEntries = useMemo(() => {
     if (!timetable?.entries) return [];
     if (!section) return timetable.entries;
-    return timetable.entries.filter(e => e.sectionIds?.includes(section.id));
-  }, [timetable, section]);
+    return timetable.entries.filter(e => 
+      e.sectionNames?.includes(section.name) || 
+      (e as any).sectionIds?.includes(section.id) ||
+      activities.find(a => a.id === e.activityId)?.sectionIds?.includes(section.id)
+    );
+  }, [timetable, section, activities]);
 
   // Standard period structure from template:
   // P1: 09:00 to 10:00 (I)
@@ -147,16 +151,17 @@ export const OfficialTimetableModal: React.FC<OfficialTimetableModalProps> = ({
     }>();
 
     for (const entry of sectionEntries) {
-      const cId = entry.courseId;
-      if (!courseMap.has(cId)) {
-        courseMap.set(cId, {
+      const cKey = entry.courseCode || (entry as any).courseId || entry.courseName || entry.activityName || entry.activityId;
+      if (!cKey) continue;
+      if (!courseMap.has(cKey)) {
+        courseMap.set(cKey, {
           code: entry.courseCode || 'SUB',
-          name: entry.courseName || entry.activityTitle || 'Subject',
+          name: entry.courseName || entry.activityName || 'Subject',
           teacherIds: new Set(entry.teacherIds || []),
           totalHours: entry.duration || 1
         });
       } else {
-        const item = courseMap.get(cId)!;
+        const item = courseMap.get(cKey)!;
         entry.teacherIds?.forEach(t => item.teacherIds.add(t));
         item.totalHours += (entry.duration || 1);
       }
@@ -215,12 +220,12 @@ export const OfficialTimetableModal: React.FC<OfficialTimetableModalProps> = ({
       lunchTime: '1.00 to 2.00',
       days: gridRows.map(r => ({
         name: r.dayName,
-        morning1: r.p0?.courseCode || r.p0?.activityTitle || '-',
-        morning2: r.p1?.courseCode || r.p1?.activityTitle || '-',
-        midMorning1: r.p2?.courseCode || r.p2?.activityTitle || '-',
-        midMorning2: r.isMidMorningLab ? '' : (r.p3?.courseCode || r.p3?.activityTitle || '-'),
-        afternoon1: r.p4?.courseCode || r.p4?.activityTitle || '-',
-        afternoon2: r.isAfternoonLab ? '' : (r.p5?.courseCode || r.p5?.activityTitle || '-')
+        morning1: r.p0?.courseCode || r.p0?.activityName || '-',
+        morning2: r.p1?.courseCode || r.p1?.activityName || '-',
+        midMorning1: r.p2?.courseCode || r.p2?.activityName || '-',
+        midMorning2: r.isMidMorningLab ? '' : (r.p3?.courseCode || r.p3?.activityName || '-'),
+        afternoon1: r.p4?.courseCode || r.p4?.activityName || '-',
+        afternoon2: r.isAfternoonLab ? '' : (r.p5?.courseCode || r.p5?.activityName || '-')
       }))
     };
 
@@ -375,12 +380,12 @@ export const OfficialTimetableModal: React.FC<OfficialTimetableModalProps> = ({
 
                         {/* Period 0 (I) */}
                         <td className="border-r border-black px-1.5 py-1">
-                          {row.p0?.courseCode || row.p0?.activityTitle || (isSaturday ? 'E&SM' : '-')}
+                          {row.p0?.courseCode || row.p0?.activityName || (isSaturday ? 'E&SM' : '-')}
                         </td>
 
                         {/* Period 1 (II) */}
                         <td className="border-r border-black px-1.5 py-1">
-                          {row.p1?.courseCode || row.p1?.activityTitle || (isSaturday ? 'ACD' : '-')}
+                          {row.p1?.courseCode || row.p1?.activityName || (isSaturday ? 'ACD' : '-')}
                         </td>
 
                         {/* BREAK column is handled by rowSpan */}
@@ -388,7 +393,7 @@ export const OfficialTimetableModal: React.FC<OfficialTimetableModalProps> = ({
                         {/* Mid-morning periods: Check for lab span */}
                         {row.isMidMorningLab ? (
                           <td colSpan={2} className="border-r border-black px-2 py-1 text-center font-bold tracking-wide">
-                            {row.p2?.courseCode || row.p2?.activityTitle || 'CN LAB'}
+                            {row.p2?.courseCode || row.p2?.activityName || 'CN LAB'}
                           </td>
                         ) : isSaturday ? (
                           <td colSpan={2} className="border-r border-black px-2 py-1 text-center font-bold tracking-wide">
@@ -397,10 +402,10 @@ export const OfficialTimetableModal: React.FC<OfficialTimetableModalProps> = ({
                         ) : (
                           <>
                             <td className="border-r border-black px-1.5 py-1">
-                              {row.p2?.courseCode || row.p2?.activityTitle || '-'}
+                              {row.p2?.courseCode || row.p2?.activityName || '-'}
                             </td>
                             <td className="border-r border-black px-1.5 py-1">
-                              {row.p3?.courseCode || row.p3?.activityTitle || '-'}
+                              {row.p3?.courseCode || row.p3?.activityName || '-'}
                             </td>
                           </>
                         )}
@@ -410,7 +415,7 @@ export const OfficialTimetableModal: React.FC<OfficialTimetableModalProps> = ({
                         {/* Afternoon periods: Check for lab span */}
                         {row.isAfternoonLab ? (
                           <td colSpan={2} className="px-2 py-1 text-center font-bold tracking-wide">
-                            {row.p4?.courseCode || row.p4?.activityTitle || 'EDA with R LAB'}
+                            {row.p4?.courseCode || row.p4?.activityName || 'EDA with R LAB'}
                           </td>
                         ) : isSaturday ? (
                           <td colSpan={2} className="px-2 py-1 text-center font-bold tracking-wide">
@@ -419,10 +424,10 @@ export const OfficialTimetableModal: React.FC<OfficialTimetableModalProps> = ({
                         ) : (
                           <>
                             <td className="border-r border-black px-1.5 py-1">
-                              {row.p4?.courseCode || row.p4?.activityTitle || '-'}
+                              {row.p4?.courseCode || row.p4?.activityName || '-'}
                             </td>
                             <td className="px-1.5 py-1">
-                              {row.p5?.courseCode || row.p5?.activityTitle || '-'}
+                              {row.p5?.courseCode || row.p5?.activityName || '-'}
                             </td>
                           </>
                         )}
